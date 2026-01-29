@@ -1,14 +1,14 @@
 # ギャラリー埋め込み 実装計画（v2）
 
 ## 決定事項（今回の回答反映）
-- タグは Notion の Relation（タグDB）を使用
+- タグは Notion の Relation（タグDB）を使用（作品DB上のプロパティ名は「タグ」）
 - 作者も Notion の Relation（作者DB）を使用
+- タグDBのタイトルプロパティ名は「タグ名」
 - 「スキップ」作品は**ギャラリーから除外しない**
 - サムネイル生成は初期から実施（Pillow で 4:5 センタークロップ）
-- ★ API エンドポイントは **Cloudflare Workers（workers.dev）を採用**
-  - 例: `https://<worker-name>.<account>.workers.dev`
-  - CORS を `*` 許可にし、iframe からのアクセスを前提とする
-  - 将来的に同一ドメイン化したくなったら、カスタムドメイン + `/api/*` ルートに移行
+- ★ API は任意（`data-star-api` または `window.STAR_API_BASE` を設定）
+  - 未設定/到達不能時は★UIを非表示
+  - Workers を使う場合は `workers.dev` / カスタムドメインどちらも可
 
 ---
 
@@ -18,17 +18,17 @@
 - Notion DB のプロパティ名・型を再確認
   - 作品名 / 画像 / 完成日 / 作者 / 教室 / タグ(Relation) / キャプション
 - タグDB / 作者DB のタイトルプロパティ名
-  - タグDBは「タグ名」を採用済み（コード側は title 型プロパティを自動検出する方針）
+  - タグDBは「タグ名」を採用済み
 - R2 公開URL（`R2_PUBLIC_URL`）
 - ★ Worker 名称（workers.dev のサブドメイン名）
 
 ---
 
-### Phase 1: auto-post に gallery.json 生成機能を追加
+### Phase 1: auto-post に gallery.json 生成機能を追加（実装済み）
 **目的:** Notion → gallery.json を生成し R2 にアップロード
 
 #### 1-1. Notion から必要情報を抽出
-- 追加予定ファイル: `auto-post/src/auto_post/gallery_exporter.py`
+- 追加済みファイル: `auto-post/src/auto_post/gallery_exporter.py`
 - `NotionDB` を利用して全作品を取得
   - スキップ作品も含める（除外しない）
 - `images` が空の作品は除外（仕様）
@@ -50,25 +50,27 @@
 
 #### 1-3. サムネイル生成（初期導入）
 - `Pillow` でサムネを生成
-- 4:5 センタークロップ + 幅 480–600px
+- 4:5 センタークロップ + 幅 600px（`--thumb-width` で変更可）
 - 保存先: `thumbs/<work_id>.jpg`
 - `thumb` が生成できなければ `images[0]` を使う
+- `--no-thumbs` でサムネ生成をスキップ可能
 
 #### 1-4. R2 へのアップロード
 - `gallery.json` を `gallery.json` として保存
 - `Cache-Control: max-age=300` を付与
-- `gallery.html` を 1時間キャッシュ
-  - `Cache-Control: max-age=3600`
+- サムネイルは `Cache-Control: max-age=31536000`
 
 #### 1-5. CLI コマンド追加
 - `auto-post/src/auto_post/cli.py`
 - 新コマンド: `auto-post export-gallery-json`
 - 出力内容
   - 生成件数 / 除外件数 / エラー件数
+- オプション
+  - `--output` / `--no-upload` / `--no-thumbs` / `--thumb-width`
 
 ---
 
-### Phase 2: gallery.html（単一HTML/JS/CSS）
+### Phase 2: gallery.html（単一HTML/JS/CSS）（実装済み）
 **目的:** iframe に埋め込むギャラリー UI を構築
 
 #### 2-1. JSON 取得
@@ -79,28 +81,32 @@
 - 4:5 サムネイルカード
 - 2–5 列のレスポンシブ
 - `loading="lazy"`
+- 背景は白（`#FFFFFF`）、フォントは Zen Kaku Gothic New + Courier Prime（埋め込み）
 
 #### 2-3. フィルタ UI
-- 種別セレクト（作者 / タグ / 教室）
+- 3つのセレクトを常時表示（キーワード / 作者 / 教室）
 - 値セレクトはデータから動的生成
-- クリア可能
+- `すべて` で解除、クリアボタンなし
 - URLクエリ同期 (`?filter=tag&value=...`)
+- 選択中の表示では件数を隠す（開いたときのみ件数表示）
 
 #### 2-4. モーダル
 - カードクリックで詳細表示
 - 画像は縦並び
 - 作者/教室/タグはクリックでフィルタ遷移
-- ESC / 背景 / × で閉じる
+- ESC / 背景 / **戻るボタン** で閉じる
+- 戻るボタンはモーダル枠外の左上に配置
+- スクロールヒント「∨」を本文末尾に表示
 
 #### 2-5. ★ 機能（フロント側）
 - `GET /stars?ids=...` で一括取得
 - `POST /star` で加算
 - オプティミスティック更新
-- API失敗時はカウント非表示（ボタンは残す）
+- API未設定/失敗時は★UIを非表示
 
 ---
 
-### Phase 3: Cloudflare Worker（★ API）
+### Phase 3: Cloudflare Worker（★ API）（未実装/別途）
 **目的:** ★カウントをKVに保存
 
 - KV key: `star:<work_id>`
@@ -116,6 +122,8 @@
 - `gallery.html`, `gallery.json`, `thumbs/` を R2 に配置
 - Googleサイトに iframe 埋め込み
 - 定期実行（1日1回）+ 手動実行コマンド
+- `gallery.json` は生成物のためリポジトリでは管理しない（`.gitignore`）
+  - 共有用に必要なら `gallery.sample.json` を用意
 
 ---
 
