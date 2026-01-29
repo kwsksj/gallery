@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "updated_at": "2026-01-28T00:00:00Z",
+  "works": [
+    {
+      "id": "work-001",
+      "title": "Sample Work",
+      "completed_date": "2026-01-20",
+      "caption": "Optional caption",
+      "author": "Sample Author",
+      "studio": "Tokyo",
+      "tags": ["animal", "clay"],
+      "images": [
+        "https://example.com/images/work-001/1.jpg"
+      ],
+      "thumb": "https://example.com/thumbs/work-001.jpg"
+    }
+  ]
+}

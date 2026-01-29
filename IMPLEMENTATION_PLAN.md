@@ -106,9 +106,11 @@
 
 ---
 
-### Phase 3: Cloudflare Worker（★ API）（未実装/別途）
+### Phase 3: Cloudflare Worker（★ API）（実装済み）
 **目的:** ★カウントをKVに保存
 
+- 実装ファイル: `worker/src/index.js`
+- 設定テンプレート: `wrangler.toml`（`STAR_KV` バインディング）
 - KV key: `star:<work_id>`
 - GET `/stars?ids=...`
   - `{ stars: { id: count } }`
@@ -118,12 +120,13 @@
 
 ---
 
-### Phase 4: デプロイ・運用
+### Phase 4: デプロイ・運用（手順追加）
 - `gallery.html`, `gallery.json`, `thumbs/` を R2 に配置
 - Googleサイトに iframe 埋め込み
 - 定期実行（1日1回）+ 手動実行コマンド
 - `gallery.json` は生成物のためリポジトリでは管理しない（`.gitignore`）
-  - 共有用に必要なら `gallery.sample.json` を用意
+  - 共有用に `gallery.sample.json` を追加
+- README にデプロイ/運用の手順を追記
 
 ---
 
@@ -138,8 +141,8 @@
 
 ---
 
-## 次の作業候補（実装順）
-1. auto-post に `export-gallery-json` 追加
-2. サムネ生成ユーティリティ追加
-3. gallery.html 実装
-4. ★ Worker 作成
+## 次の作業候補（運用）
+1. Workers/KV の本番デプロイ
+2. R2 へ `gallery.html`/`gallery.json`/`thumbs/` を配置
+3. Googleサイト iframe 設定
+4. 定期実行（Cron/GitHub Actions など）の導入
