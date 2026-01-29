@@ -1264,9 +1264,9 @@
     }
 
     .modal-panel {
-      width: min(860px, 95vw);
-      height: min(90vh, 920px);
-      max-height: 90vh;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
       overflow: hidden;
       background: #fff;
       border-radius: 18px;
@@ -1289,18 +1289,23 @@
       z-index: 3;
     }
 
+    .modal-shell {
+      width: min(860px, 95vw);
+      height: min(90vh, 920px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     .modal-back {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      background: rgba(255, 253, 245, 0.7);
+      align-self: flex-start;
+      background: rgba(255, 253, 245, 0.96);
       color: var(--ink);
-      border: none;
-      font-size: 10px;
+      border: 1px solid var(--line-light);
+      font-size: 12px;
       cursor: pointer;
-      padding: 4px 8px;
+      padding: 6px 10px;
       border-radius: 999px;
-      z-index: 3;
     }
 
     .modal-header {
@@ -1353,6 +1358,7 @@
 
     .modal-meta-label {
       color: var(--muted);
+      margin-right: 6px;
     }
 
     .modal-body {
@@ -1493,9 +1499,11 @@
   </div>
 
   <div class="modal" id="modal" aria-hidden="true">
-    <button class="modal-back" id="modal-back" type="button">＜ 戻る</button>
-    <div class="modal-panel" role="dialog" aria-modal="true">
-      <div id="modal-content"></div>
+    <div class="modal-shell">
+      <button class="modal-back" id="modal-back" type="button">＜ 戻る</button>
+      <div class="modal-panel" role="dialog" aria-modal="true">
+        <div id="modal-content"></div>
+      </div>
     </div>
   </div>
 
@@ -1662,14 +1670,32 @@
       const allOption = document.createElement("option");
       allOption.value = "__all__";
       allOption.textContent = buildLabel(allLabel, total);
+      allOption.dataset.fullLabel = allOption.textContent;
+      allOption.dataset.shortLabel = allLabel;
       select.appendChild(allOption);
 
       options.forEach(({ value, count }) => {
         const opt = document.createElement("option");
         opt.value = value;
         opt.textContent = buildLabel(value, count);
+        opt.dataset.fullLabel = opt.textContent;
+        opt.dataset.shortLabel = value;
         select.appendChild(opt);
       });
+      hideCountsInSelected(select);
+    }
+
+    function showCounts(select) {
+      select.querySelectorAll("option").forEach((opt) => {
+        if (opt.dataset.fullLabel) opt.textContent = opt.dataset.fullLabel;
+      });
+    }
+
+    function hideCountsInSelected(select) {
+      const selected = select.selectedOptions[0];
+      if (selected && selected.dataset.shortLabel) {
+        selected.textContent = selected.dataset.shortLabel;
+      }
     }
 
     function applyFilter(resetScroll = false) {
@@ -1800,10 +1826,13 @@
 
       if (state.filter.type === "tag") {
         els.filterTag.value = state.filter.value;
+        hideCountsInSelected(els.filterTag);
       } else if (state.filter.type === "author") {
         els.filterAuthor.value = state.filter.value;
+        hideCountsInSelected(els.filterAuthor);
       } else if (state.filter.type === "studio") {
         els.filterStudio.value = state.filter.value;
+        hideCountsInSelected(els.filterStudio);
       }
     }
 
@@ -1931,7 +1960,7 @@
         authorInline.className = "modal-meta-inline";
         const authorLabel = document.createElement("span");
         authorLabel.className = "modal-meta-label";
-        authorLabel.textContent = "作者 ";
+        authorLabel.textContent = "作者";
         authorInline.appendChild(authorLabel);
         authorInline.appendChild(makeChip("author", work.author, true, ""));
         headerMeta.appendChild(authorInline);
@@ -2041,6 +2070,11 @@
       els.filterTag.addEventListener("change", () => onFilterSelect("tag", els.filterTag));
       els.filterAuthor.addEventListener("change", () => onFilterSelect("author", els.filterAuthor));
       els.filterStudio.addEventListener("change", () => onFilterSelect("studio", els.filterStudio));
+      [els.filterTag, els.filterAuthor, els.filterStudio].forEach((selectEl) => {
+        selectEl.addEventListener("focus", () => showCounts(selectEl));
+        selectEl.addEventListener("blur", () => hideCountsInSelected(selectEl));
+        selectEl.addEventListener("change", () => hideCountsInSelected(selectEl));
+      });
       els.modalBack.addEventListener("click", closeModal);
       els.modal.addEventListener("click", (e) => {
         if (e.target === els.modal) closeModal();
