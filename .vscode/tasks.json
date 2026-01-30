@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Upload gallery.html to R2",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/upload-gallery-html.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
