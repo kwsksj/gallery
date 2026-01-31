@@ -2346,20 +2346,20 @@
 
 			/* EMBEDDED FONTS END */
 			:root {
-				--bg: #ffffff;
+				--bg: #f1efee;
 				--paper: #ffffff;
 				--ink: #4e342e;
 				--subtle: #785a4e;
 				--muted: #a1887f;
-				--line: #e8ddd6;
+				--line: #d3c2b9;
 				--line-light: #e8ddd6;
 				--accent: #c86f34;
 				--accent-2: #5a8c36;
 				--chip-bg: #e4cdba;
 				--chip-text: #4e342e;
-				--shadow: 2px 4px 6px rgba(90, 60, 40, 0.08);
-				--radius: 14px;
-				--grid-gap: 16px;
+				--shadow: 4px 4px 4px rgba(90, 60, 40, 0.08);
+				--radius: 12px;
+				--grid-gap: 6px;
 				--font-body:
 					"Courier Prime", "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN",
 					"Yu Gothic", "Meiryo", monospace;
@@ -2387,7 +2387,7 @@
 
 			.app {
 				min-height: 100vh;
-				padding: 20px 16px 48px;
+				padding: 0px 0px px;
 				width: 100%;
 			}
 
@@ -2395,10 +2395,10 @@
 				position: sticky;
 				top: 0;
 				z-index: 5;
-				background: var(--bg);
+				background: var(--paper);
 				border-bottom: 2px solid var(--line);
-				padding: 12px 0 12px;
-				margin-bottom: 16px;
+				padding: 6px 0 8px;
+				margin-bottom: 6px;
 			}
 
 			.header-inner {
@@ -2410,15 +2410,16 @@
 				display: flex;
 				align-items: baseline;
 				justify-content: flex-start;
-				gap: 12px;
-				padding: 0 6px 10px;
+				gap: 6px;
+				padding: 0 6px 6px;
 			}
 
 			.title {
-				font-size: 22px;
+				font-size: 16px;
 				letter-spacing: 0.04em;
 				margin: 0;
-				font-weight: 700;
+				font-weight: 800;
+				padding: 0 0 0 6px;
 			}
 
 			.count {
@@ -2427,17 +2428,18 @@
 				margin-left: auto;
 				text-align: right;
 				min-width: 60px;
+				padding: 0 6px 0 0;
 			}
 
 			.filters {
 				display: grid;
-				gap: 10px;
+				gap: 6px;
 				padding: 0 6px;
 			}
 
 			.filter-row {
 				display: grid;
-				gap: 10px;
+				gap: 6px;
 				grid-template-columns: repeat(2, minmax(0, 1fr));
 			}
 
@@ -2460,7 +2462,8 @@
 				width: 100%;
 				border-radius: 10px;
 				border: 2px solid var(--line);
-				padding: 8px 8px;
+				font-size: 14px;
+				padding: 4px 14px;
 				background: var(--paper);
 				color: var(--ink);
 				font-variant-numeric: tabular-nums;
@@ -2514,7 +2517,7 @@
 
 			.card {
 				background: #fff;
-				border: 2px solid var(--line);
+				/* border: 2px solid var(--line); */
 				border-radius: var(--radius);
 				box-shadow: var(--shadow);
 				overflow: hidden;
@@ -2683,7 +2686,7 @@
 			}
 
 			.modal-title {
-				font-size: 20px;
+				font-size: 14px;
 				margin: 0 0 6px;
 			}
 
@@ -3151,7 +3154,7 @@
 						: "";
 
 					body.appendChild(titleRow);
-					body.appendChild(meta);
+					// body.appendChild(meta);
 
 					card.appendChild(thumb);
 					card.appendChild(body);
@@ -3292,11 +3295,14 @@
 			}
 
 			async function sendStarDelta(id, delta) {
-				const res = await fetch(`${state.starApiBase.replace(/\/$/, "")}/star`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ id, delta }),
-				});
+				const res = await fetch(
+					`${state.starApiBase.replace(/\/$/, "")}/star`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ id, delta }),
+					},
+				);
 				if (!res.ok) throw new Error("star post failed");
 				const data = await res.json();
 				if (typeof data.stars !== "number") {
