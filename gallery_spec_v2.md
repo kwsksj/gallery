@@ -146,6 +146,10 @@ Notion（母艦）＋ Cloudflare R2（画像）をソースとして、作品ギ
         "https://<r2-public>/images/.../1.jpg",
         "https://<r2-public>/images/.../2.jpg"
       ],
+      "images_light": [
+        "https://<r2-public>/images-light/.../1.jpg",
+        "https://<r2-public>/images-light/.../2.jpg"
+      ],
       "thumb": "https://<r2-public>/thumbs/.../cover.jpg"
     }
   ]
@@ -154,7 +158,9 @@ Notion（母艦）＋ Cloudflare R2（画像）をソースとして、作品ギ
 
 **必須**：`id`, `title`, `completed_date`, `images`（1枚以上）
 
-**任意**：`caption`, `author`, `studio`, `tags`, `thumb`
+**任意**：`caption`, `author`, `studio`, `tags`, `thumb`, `images_light`
+
+`images_light` はモーダル表示用の軽量画像（`images` が高解像度の場合の代替）。未指定時は `images` を使用。
 
 ### データ正規化ルール（Notion側で担保）
 

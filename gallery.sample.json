@@ -13,6 +13,9 @@
       "images": [
         "https://example.com/images/work-001/1.jpg"
       ],
+      "images_light": [
+        "https://example.com/images-light/work-001/1.jpg"
+      ],
       "thumb": "https://example.com/thumbs/work-001.jpg"
     }
   ]
