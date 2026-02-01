@@ -3947,15 +3947,16 @@
 				chip.textContent = `${value}`;
 				chip.addEventListener("click", () => {
 					setActiveFilter(type, value, true);
-					closeModal();
+					closeModal({ resetScroll: true });
 				});
 				return chip;
 			}
 
-			function closeModal() {
+			function closeModal(options = null) {
+				const resetScroll = Boolean(options && options.resetScroll);
 				els.modal.classList.remove("open");
 				els.modal.setAttribute("aria-hidden", "true");
-				unlockBodyScroll();
+				unlockBodyScroll(resetScroll);
 			}
 
 			function lockBodyScroll() {
@@ -3965,11 +3966,11 @@
 				document.body.style.top = `-${state.modalScrollY}px`;
 			}
 
-			function unlockBodyScroll() {
+			function unlockBodyScroll(resetScroll = false) {
 				if (!document.body.classList.contains("modal-open")) return;
 				document.body.classList.remove("modal-open");
 				document.body.style.top = "";
-				window.scrollTo(0, state.modalScrollY || 0);
+				window.scrollTo(0, resetScroll ? 0 : state.modalScrollY || 0);
 			}
 
 			function updateModalImageMaxHeight(bodyEl) {
