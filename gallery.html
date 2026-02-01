@@ -2518,15 +2518,43 @@
 				top: calc(100% + 6px);
 				left: 0;
 				right: 0;
-				background: var(--paper);
+				background:
+					linear-gradient(var(--paper) 35%, rgba(255, 255, 255, 0)) top / 100%
+						24px no-repeat,
+					linear-gradient(rgba(255, 255, 255, 0), var(--paper) 70%) bottom /
+						100% 24px no-repeat,
+					var(--paper);
+				background-attachment: local, local, scroll;
 				border: 1px solid var(--line-light);
 				border-radius: 12px;
-				box-shadow: var(--shadow);
+				box-shadow:
+					var(--shadow),
+					inset 0 10px 12px -12px rgba(0, 0, 0, 0.25),
+					inset 0 -10px 12px -12px rgba(0, 0, 0, 0.25);
 				padding: 6px;
 				display: none;
-				max-height: 260px;
+				max-height: min(360px, 60vh);
 				overflow: auto;
+				overscroll-behavior: contain;
+				scrollbar-gutter: stable;
+				scrollbar-width: thin;
+				scrollbar-color: rgba(120, 90, 78, 0.45) transparent;
 				z-index: 6;
+			}
+
+			.filter-menu::-webkit-scrollbar {
+				width: 10px;
+			}
+
+			.filter-menu::-webkit-scrollbar-thumb {
+				background: rgba(120, 90, 78, 0.35);
+				border-radius: 999px;
+				border: 3px solid transparent;
+				background-clip: content-box;
+			}
+
+			.filter-menu::-webkit-scrollbar-track {
+				background: transparent;
 			}
 
 			.filter-select.open .filter-menu {
@@ -2677,9 +2705,7 @@
 
 			.star-row {
 				display: flex;
-				flex-direction: column;
 				align-items: center;
-				gap: 2px;
 				margin-left: auto;
 			}
 
@@ -2687,19 +2713,22 @@
 				position: relative;
 				display: grid;
 				place-items: center;
-				width: 30px;
-				height: 30px;
+				width: 40px;
+				height: 40px;
 				background: #fff;
 				color: var(--accent);
-				border: 1px solid var(--line-light);
+				border: none;
 				padding: 0;
 				border-radius: 999px;
+				box-shadow: 0 2px 6px rgba(90, 60, 40, 0.12);
 				overflow: visible;
+				touch-action: manipulation;
+				-webkit-tap-highlight-color: transparent;
 			}
 
 			.star-btn svg {
-				width: 18px;
-				height: 18px;
+				width: 20px;
+				height: 20px;
 				stroke: var(--accent);
 				stroke-width: 1.7;
 				stroke-linejoin: round;
@@ -2707,11 +2736,30 @@
 				fill: none;
 			}
 
+			.star-btn .star-count {
+				position: absolute;
+				left: 50%;
+				bottom: 2px;
+				min-width: 12px;
+				padding: 0 2px;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--muted);
+				font-size: 9px;
+				font-weight: 700;
+				line-height: 1;
+				text-align: center;
+				font-variant-numeric: tabular-nums;
+				pointer-events: none;
+				box-shadow: none;
+				transform: translateX(-50%);
+			}
+
 			.star-btn::before,
 			.star-btn::after {
 				content: "";
 				position: absolute;
-				inset: -2px;
+				inset: -6px;
 				border-radius: 50%;
 				opacity: 0;
 				pointer-events: none;
@@ -2731,8 +2779,9 @@
 
 			.star-btn.sparkle {
 				background: #fff3e2;
-				border-color: #f3cda4;
-				box-shadow: 0 0 12px rgba(255, 200, 130, 0.55);
+				box-shadow:
+					0 0 16px rgba(255, 200, 130, 0.6),
+					0 4px 12px rgba(90, 60, 40, 0.18);
 				animation: sparkle-btn 0.6s ease-out;
 			}
 
@@ -2754,6 +2803,7 @@
 				font-size: 10px;
 				color: var(--muted);
 				text-align: center;
+				box-shadow: none;
 			}
 
 			.star-hidden .star-count {
@@ -2787,7 +2837,7 @@
 			.marker::after {
 				content: "";
 				flex: 1;
-				height: 1px;
+				height: 2px;
 				background: var(--line-light);
 			}
 
@@ -2796,14 +2846,14 @@
 			}
 
 			.marker--year {
-				font-size: 12px;
+				font-size: 14px;
 				font-weight: 700;
 				color: var(--ink);
 				margin-top: 16px;
 			}
 
 			.marker--month {
-				font-size: 11px;
+				font-size: 12px;
 				color: var(--muted);
 				margin-top: 6px;
 			}
@@ -3352,6 +3402,31 @@
 				return { year: match[1], month: match[2] };
 			}
 
+			function buildMonthCounts(works) {
+				const counts = new Map();
+				works.forEach((w) => {
+					const { year, month } = parseYearMonth(w.completed_date);
+					if (!year || !month) return;
+					const key = `${year}-${month}`;
+					counts.set(key, (counts.get(key) || 0) + 1);
+				});
+				return counts;
+			}
+
+			function buildYearMonthMarkerFlags(monthCounts, monthMarkerMin) {
+				const flags = new Map();
+				monthCounts.forEach((count, key) => {
+					const year = key.split("-")[0];
+					if (!year) return;
+					if (count >= monthMarkerMin) {
+						flags.set(year, true);
+					} else if (!flags.has(year)) {
+						flags.set(year, false);
+					}
+				});
+				return flags;
+			}
+
 			function createMarker(text, variant) {
 				const marker = document.createElement("div");
 				marker.className = `marker marker--${variant}`;
@@ -3388,6 +3463,12 @@
 				els.grid.innerHTML = "";
 				const fragment = document.createDocumentFragment();
 
+				const monthCounts = buildMonthCounts(works);
+				const MONTH_MARKER_MIN = 6;
+				const yearMonthMarkerFlags = buildYearMonthMarkerFlags(
+					monthCounts,
+					MONTH_MARKER_MIN,
+				);
 				let lastYear = "";
 				let lastMonth = "";
 				let lastSection = "";
@@ -3409,9 +3490,12 @@
 							lastSection = "date";
 						}
 						if (month && month !== lastMonth) {
-							fragment.appendChild(
-								createMarker(`${Number(month)}月`, "month"),
-							);
+							const showMonthMarkers = yearMonthMarkerFlags.get(year);
+							if (showMonthMarkers) {
+								fragment.appendChild(
+									createMarker(`${Number(month)}月`, "month"),
+								);
+							}
 							lastMonth = month;
 						}
 					}
@@ -3452,8 +3536,8 @@
 					starCount.dataset.starCountFor = w.id;
 					starCount.textContent = getStarCount(w.id);
 
+					starBtn.appendChild(starCount);
 					starRow.appendChild(starBtn);
-					starRow.appendChild(starCount);
 
 					titleRow.appendChild(title);
 					titleRow.appendChild(starRow);
@@ -3741,8 +3825,8 @@
 				starCount.dataset.starCountFor = work.id;
 				starCount.textContent = getStarCount(work.id);
 
+				starBtn.appendChild(starCount);
 				starRow.appendChild(starBtn);
-				starRow.appendChild(starCount);
 
 				titleRow.appendChild(title);
 				titleRow.appendChild(starRow);
