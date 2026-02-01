@@ -3975,7 +3975,7 @@
 			function updateModalImageMaxHeight(bodyEl) {
 				const panel = els.modal.querySelector(".modal-panel");
 				if (!panel || !bodyEl) return;
-				const available = bodyEl.clientHeight - 12 - 12;
+				const available = bodyEl.clientHeight - 80;
 				panel.style.setProperty(
 					"--modal-image-max-height",
 					`${Math.max(240, available)}px`,
