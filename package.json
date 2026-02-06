@@ -2,6 +2,7 @@
   "name": "gallery",
   "private": true,
   "scripts": {
+    "upload:admin-html": "bash ./scripts/upload-admin-html.sh",
     "upload:gallery-html": "bash ./scripts/upload-gallery-html.sh"
   }
 }
