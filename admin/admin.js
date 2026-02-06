@@ -37,7 +37,9 @@ function getConfig() {
 async function apiFetch(path, init = {}) {
 	const base = state.config.apiBase;
 	const url = base ? new URL(path, base).toString() : path;
-	const res = await fetch(url, { credentials: "include", ...init });
+	const requestOrigin = new URL(url, window.location.href).origin;
+	const credentials = requestOrigin === window.location.origin ? "include" : "omit";
+	const res = await fetch(url, { credentials, ...init });
 	const data = await res.json().catch(() => null);
 	if (!res.ok) {
 		const message = data?.error || data?.message || `HTTP ${res.status}`;
