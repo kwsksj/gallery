@@ -122,6 +122,222 @@ function getTagsProps(env) {
   };
 }
 
+function databaseProps(database) {
+  return database?.properties || {};
+}
+
+function findFirstPropertyNameByType(database, type) {
+  const props = databaseProps(database);
+  for (const [name, prop] of Object.entries(props)) {
+    if (prop?.type === type) return name;
+  }
+  return "";
+}
+
+function pickPropertyName(database, preferredNames, fallbackType = "") {
+  const props = databaseProps(database);
+  for (const name of preferredNames) {
+    if (name && props[name]) return name;
+  }
+  if (fallbackType) return findFirstPropertyNameByType(database, fallbackType);
+  return "";
+}
+
+function getPageProperty(page, propName) {
+  if (!propName) return null;
+  return page?.properties?.[propName] || null;
+}
+
+function extractPlainTextItems(items) {
+  if (!Array.isArray(items)) return "";
+  return items.map((item) => asString(item?.plain_text)).join("").trim();
+}
+
+function extractPropertyText(prop) {
+  if (!prop || typeof prop !== "object") return "";
+  const type = prop.type;
+  if (type === "title") return extractPlainTextItems(prop.title);
+  if (type === "rich_text") return extractPlainTextItems(prop.rich_text);
+  if (type === "select") return asString(prop.select?.name).trim();
+  if (type === "status") return asString(prop.status?.name).trim();
+  if (type === "number") return Number.isFinite(prop.number) ? String(prop.number) : "";
+  if (type === "formula") {
+    const formula = prop.formula;
+    if (!formula) return "";
+    if (formula.type === "string") return asString(formula.string).trim();
+    if (formula.type === "number") return Number.isFinite(formula.number) ? String(formula.number) : "";
+    if (formula.type === "boolean") return formula.boolean ? "true" : "false";
+    return "";
+  }
+  if (type === "rollup") {
+    const rollup = prop.rollup;
+    if (!rollup) return "";
+    if (rollup.type === "number") return Number.isFinite(rollup.number) ? String(rollup.number) : "";
+    if (rollup.type === "array") return String(Array.isArray(rollup.array) ? rollup.array.length : 0);
+    return "";
+  }
+  return "";
+}
+
+function extractPropertyNumber(prop) {
+  if (!prop || typeof prop !== "object") return 0;
+  const type = prop.type;
+  if (type === "number") return Number.isFinite(prop.number) ? prop.number : 0;
+  if (type === "formula") {
+    const formula = prop.formula;
+    if (!formula) return 0;
+    if (formula.type === "number" && Number.isFinite(formula.number)) return formula.number;
+    if (formula.type === "string") {
+      const parsed = Number(formula.string);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }
+  if (type === "rollup") {
+    const rollup = prop.rollup;
+    if (!rollup) return 0;
+    if (rollup.type === "number" && Number.isFinite(rollup.number)) return rollup.number;
+    if (rollup.type === "array") return Array.isArray(rollup.array) ? rollup.array.length : 0;
+    return 0;
+  }
+  const parsed = Number(extractPropertyText(prop));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractRelationIds(prop) {
+  const relation = prop?.relation;
+  if (!Array.isArray(relation)) return [];
+  return relation.map((item) => asString(item?.id)).filter(Boolean);
+}
+
+function splitAliases(text) {
+  if (!text) return [];
+  return text
+    .split(/[\s,、，;；\n\r\t]+/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function extractAliases(prop) {
+  if (!prop || typeof prop !== "object") return [];
+  if (prop.type === "multi_select") {
+    return (prop.multi_select || [])
+      .map((opt) => asString(opt?.name).trim())
+      .filter(Boolean);
+  }
+  return splitAliases(extractPropertyText(prop));
+}
+
+function normalizeTagStatus(raw) {
+  const value = asString(raw).trim().toLowerCase();
+  if (!value) return "active";
+  if (value.includes("merged") || value.includes("統合")) return "merged";
+  if (value.includes("hidden") || value.includes("非表示")) return "hidden";
+  return "active";
+}
+
+async function queryAllDatabasePages(env, databaseId, queryBody = {}) {
+  const pages = [];
+  let cursor = "";
+
+  while (true) {
+    const body = { page_size: 100, ...queryBody };
+    if (cursor) body.start_cursor = cursor;
+    const res = await notionFetch(env, `/databases/${databaseId}/query`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return { ok: false, data: res.data };
+
+    const results = Array.isArray(res.data?.results) ? res.data.results : [];
+    pages.push(...results);
+    if (!res.data?.has_more) break;
+    cursor = asString(res.data?.next_cursor);
+    if (!cursor) break;
+  }
+
+  return { ok: true, pages };
+}
+
+function buildTagsIndexFromNotion(env, tagsDbId, tagsDb, pages) {
+  const titleProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_TITLE_PROP", "タグ"), "タグ"], "title");
+  const statusProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_STATUS_PROP", "状態"), "状態"], "");
+  const aliasesProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_ALIASES_PROP", "別名"), "別名"], "");
+  const mergeToProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_MERGE_TO_PROP", "統合先"), "統合先"], "");
+  const parentsProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_PARENTS_PROP", "親タグ"), "親タグ"], "");
+  const childrenProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_CHILDREN_PROP", "子タグ"), "子タグ"], "");
+  const usageCountProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_USAGE_COUNT_PROP", "作品数"), "作品数"], "");
+  const worksRelProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_WORKS_REL_PROP", "作品"), "作品"], "");
+
+  const tagsById = new Map();
+  for (const page of pages) {
+    const id = asString(page?.id).trim();
+    if (!id) continue;
+
+    const name = extractPropertyText(getPageProperty(page, titleProp)).trim();
+    if (!name) continue;
+
+    const aliases = extractAliases(getPageProperty(page, aliasesProp))
+      .filter((alias) => alias !== name)
+      .filter((alias, index, all) => all.indexOf(alias) === index);
+
+    const mergeTo = extractRelationIds(getPageProperty(page, mergeToProp))[0] || "";
+    const parents = extractRelationIds(getPageProperty(page, parentsProp));
+    const children = extractRelationIds(getPageProperty(page, childrenProp));
+
+    let usageCount = Math.max(0, Math.floor(extractPropertyNumber(getPageProperty(page, usageCountProp))));
+    if (!usageCount && worksRelProp) {
+      usageCount = Math.max(0, extractRelationIds(getPageProperty(page, worksRelProp)).length);
+    }
+
+    const statusRaw = extractPropertyText(getPageProperty(page, statusProp));
+    tagsById.set(id, {
+      id,
+      name,
+      aliases,
+      status: normalizeTagStatus(statusRaw),
+      merge_to: mergeTo,
+      parents,
+      children,
+      usage_count: usageCount,
+    });
+  }
+
+  for (const tag of tagsById.values()) {
+    for (const parentId of tag.parents) {
+      const parent = tagsById.get(parentId);
+      if (!parent) continue;
+      if (!parent.children.includes(tag.id)) parent.children.push(tag.id);
+    }
+  }
+
+  const tags = Array.from(tagsById.values()).map((tag) => ({
+    ...tag,
+    parents: [...new Set(tag.parents)].sort((a, b) => a.localeCompare(b, "ja")),
+    children: [...new Set(tag.children)].sort((a, b) => a.localeCompare(b, "ja")),
+  }));
+
+  tags.sort((a, b) => {
+    if (b.usage_count !== a.usage_count) return b.usage_count - a.usage_count;
+    return a.name.localeCompare(b.name, "ja");
+  });
+
+  return {
+    generated_at: new Date().toISOString(),
+    source: {
+      tags_db_id: tagsDbId,
+      title_prop: titleProp,
+      status_prop: statusProp,
+      aliases_prop: aliasesProp,
+      merge_to_prop: mergeToProp,
+      parents_prop: parentsProp,
+      children_prop: childrenProp,
+      usage_count_prop: usageCountProp || worksRelProp,
+    },
+    tags,
+  };
+}
+
 function findFirstDatabasePropertyNameByType(database, type) {
   const props = database?.properties || {};
   for (const [name, prop] of Object.entries(props)) {
@@ -342,8 +558,11 @@ async function handleNotionSchema(env) {
   const venueOptions = worksProps.venue
     ? (properties[worksProps.venue]?.select?.options || []).map((o) => asString(o?.name)).filter(Boolean)
     : [];
+  const authorProp = worksProps.author ? properties[worksProps.author] : null;
+  const supportsAuthor = Boolean(authorProp && authorProp.type === "relation");
+  const supportsVenue = Boolean(worksProps.venue && properties[worksProps.venue]);
 
-  return okResponse({ classroomOptions, venueOptions });
+  return okResponse({ classroomOptions, venueOptions, supportsAuthor, supportsVenue });
 }
 
 async function handleNotionListWorks(url, env) {
@@ -793,31 +1012,36 @@ async function handleTriggerGalleryUpdate(request, env) {
 }
 
 async function handleTriggerTagsIndexUpdate(request, env) {
-  const repo = getEnvString(env, "GITHUB_REPO");
-  const token = getEnvString(env, "GITHUB_TOKEN");
-  const workflowFile = getEnvString(env, "GITHUB_TAGS_WORKFLOW_FILE", "");
-  const ref = getEnvString(env, "GITHUB_REF", "main");
+  const tagsDbId = getEnvString(env, "NOTION_TAGS_DB_ID");
+  if (!env.GALLERY_R2) return serverError("R2 binding not configured (GALLERY_R2)");
+  if (!tagsDbId) return serverError("NOTION_TAGS_DB_ID not configured");
 
-  if (!repo || !token) return serverError("GitHub env not configured (GITHUB_REPO, GITHUB_TOKEN)");
-  if (!workflowFile) return serverError("GITHUB_TAGS_WORKFLOW_FILE not configured");
-
-  const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflowFile}/dispatches`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "User-Agent": "gallery-admin",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ ref }),
-  });
-
-  if (response.status === 204) {
-    return okResponse({ message: "workflow triggered" });
+  const tagsDbRes = await notionFetch(env, `/databases/${tagsDbId}`, { method: "GET" });
+  if (!tagsDbRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to fetch tags database", detail: tagsDbRes.data }, 500);
   }
 
-  const text = await response.text().catch(() => "");
-  return jsonResponse({ ok: false, error: `GitHub API error: ${text}` }, 500);
+  const queryRes = await queryAllDatabasePages(env, tagsDbId);
+  if (!queryRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to query tags database", detail: queryRes.data }, 500);
+  }
+
+  const index = buildTagsIndexFromNotion(env, tagsDbId, tagsDbRes.data, queryRes.pages);
+  const key = getEnvString(env, "TAGS_INDEX_KEY", "tags_index.json");
+  const json = JSON.stringify(index);
+  await env.GALLERY_R2.put(key, json, {
+    httpMetadata: {
+      contentType: "application/json; charset=utf-8",
+      cacheControl: "max-age=300",
+    },
+  });
+
+  return okResponse({
+    message: "tags index regenerated",
+    key,
+    count: index.tags.length,
+    generated_at: index.generated_at,
+  });
 }
 
 async function handleProxyJson(env, urlVarName, r2KeyVarName, defaultKey) {

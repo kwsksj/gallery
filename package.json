@@ -2,6 +2,8 @@
   "name": "gallery",
   "private": true,
   "scripts": {
+    "build:admin-indexes": "node ./scripts/build-admin-indexes.mjs",
+    "upload:admin-indexes": "bash ./scripts/upload-admin-indexes.sh",
     "upload:admin-html": "bash ./scripts/upload-admin-html.sh",
     "upload:gallery-html": "bash ./scripts/upload-gallery-html.sh"
   }

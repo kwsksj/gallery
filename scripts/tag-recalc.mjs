@@ -282,10 +282,13 @@ async function main() {
 		throw new Error("タグDBのプロパティ名を特定できません（Title/状態/親タグ）");
 	}
 
-	const worksTitleProp = pickPropName(worksDb, "作品名", "title");
-	const worksTagsProp = pickPropName(worksDb, "タグ", "relation");
-	const worksPreparedProp = pickPropName(worksDb, "整備済", "checkbox");
-	const worksCompletedProp = pickPropName(worksDb, "完成日", "date");
+	const worksTitleProp = pickPropName(worksDb, process.env.NOTION_WORKS_TITLE_PROP || "作品名", "title");
+	const worksTagsProp = pickPropName(worksDb, process.env.NOTION_WORKS_TAGS_PROP || "タグ", "relation");
+	const worksPreparedProp =
+		pickPropName(worksDb, process.env.NOTION_WORKS_READY_PROP || "整備済み", "") ||
+		pickPropName(worksDb, "整備済", "") ||
+		pickPropName(worksDb, "", "checkbox");
+	const worksCompletedProp = pickPropName(worksDb, process.env.NOTION_WORKS_COMPLETED_DATE_PROP || "完成日", "date");
 
 	if (!worksTagsProp) {
 		throw new Error("作品DBの「タグ」(Relation) を特定できません");
@@ -429,4 +432,3 @@ main().catch((err) => {
 	console.error(err?.message || err);
 	process.exit(1);
 });
-

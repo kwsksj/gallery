@@ -70,6 +70,24 @@ node scripts/tag-recalc.mjs --dry-run
 node scripts/tag-recalc.mjs --apply
 ```
 
+### students/tags インデックス生成・アップロード
+
+`students_index.json` / `tags_index.json` は Notion から生成して R2 に配置できます。
+
+```bash
+# 生成のみ（既定: ../auto-post/.env を読み込む）
+npm run build:admin-indexes
+
+# 生成 + R2アップロード（既定bucket: woodcarving-photos）
+npm run upload:admin-indexes
+```
+
+任意引数（直接実行時）:
+
+```bash
+bash ./scripts/upload-admin-indexes.sh <bucket> <env-file> <out-dir>
+```
+
 ## R2 配置
 
 - `gallery.html` / `gallery.json` / `thumbs/` を R2 にアップロード

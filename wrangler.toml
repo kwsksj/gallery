@@ -39,11 +39,12 @@ R2_PUBLIC_BASE_URL = "https://pub-c80f2f91aa634266b2e7178229073f65.r2.dev"
 NOTION_WORKS_DB_ID = "2ee57846aac2802c811bf6d9177ceb11"
 NOTION_TAGS_DB_ID = "2ee57846aac28024a43cda89615f7f1c"
 # （任意）生徒DB ID。未設定の場合は作品DBの Relation(作者) から推定します。
-#NOTION_STUDENTS_DB_ID = "2fc57846aac281209bb2e7438629499a"
+NOTION_STUDENTS_DB_ID = "2fc57846aac281209bb2e7438629499a"
 
 # Notionプロパティ名オーバーライド（実DB差分）
 NOTION_WORKS_READY_PROP = "整備済み"
 NOTION_WORKS_VENUE_PROP = ""
+NOTION_WORKS_AUTHOR_PROP = "作者"
 
 # 参加者/生徒/タグインデックスのR2キー（任意）
 PARTICIPANTS_INDEX_KEY = "participants_index.json"
