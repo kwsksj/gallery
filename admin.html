@@ -90,10 +90,10 @@
 						<div class="form-grid">
 							<div class="form-row">
 								<label class="label" for="upload-author">作者</label>
-								<select id="upload-author" class="input">
-									<option value="">未選択</option>
-								</select>
-								<div class="subnote">当日参加者候補 → なければ名簿検索</div>
+								<select id="upload-author" class="input" multiple size="6"></select>
+								<div class="subnote">
+									複数選択可（同日参加者候補＋名簿検索）。表示は「ニックネーム｜本名」。
+								</div>
 							</div>
 							<div class="form-row">
 								<label class="label" for="upload-author-search">名簿検索</label>
@@ -206,7 +206,7 @@
 							</button>
 						</div>
 						<div class="subnote">
-							GitHub Actions を `workflow_dispatch` で起動します（Worker側で `GITHUB_TAGS_WORKFLOW_FILE` の設定が必要）。
+							NotionのタグDBを読み直して `tags_index.json` を再生成します。
 						</div>
 					</div>
 				</section>
@@ -216,6 +216,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260207-1"></script>
+		<script type="module" src="./admin/admin.js?v=20260207-2"></script>
 	</body>
 </html>

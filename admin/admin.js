@@ -95,6 +95,94 @@ function isNotionIdLike(value) {
 	return /^[0-9a-f]{32}$/i.test(s);
 }
 
+function trimText(value) {
+	return String(value || "").trim();
+}
+
+function firstNChars(value, n) {
+	return Array.from(trimText(value)).slice(0, n).join("");
+}
+
+function splitStudentNameFromLabel(label) {
+	const raw = trimText(label);
+	if (!raw) return { nickname: "", realName: "" };
+	const m = raw.match(/^(.+?)\s*[|｜]\s*(.+)$/u);
+	if (!m) return { nickname: raw, realName: "" };
+	return { nickname: trimText(m[1]), realName: trimText(m[2]) };
+}
+
+function normalizeNickname(nickname, realName) {
+	const nick = trimText(nickname);
+	const real = trimText(realName);
+	if (!nick) return "";
+	if (!real) return nick;
+	if (nick !== real) return nick;
+	const shortened = firstNChars(real, 2);
+	return shortened || nick;
+}
+
+function buildStudentRecord(raw) {
+	const notionIdRaw = trimText(raw?.notion_id || raw?.notionId || raw?.id);
+	const studentId = trimText(raw?.student_id || raw?.studentId);
+	const displayRaw = trimText(raw?.display_name || raw?.displayName);
+	const nicknameRaw = trimText(raw?.nickname);
+	const realNameRaw = trimText(raw?.real_name || raw?.realName);
+	const parsed = splitStudentNameFromLabel(displayRaw);
+	const realName = realNameRaw || parsed.realName;
+	const nickname = normalizeNickname(
+		nicknameRaw || parsed.nickname || displayRaw,
+		realName,
+	);
+	const displayName = nickname || trimText(parsed.nickname) || realName || displayRaw || studentId || notionIdRaw;
+	const choiceLabel = realName ? `${displayName}｜${realName}` : displayName;
+	const notionId = isNotionIdLike(notionIdRaw)
+		? notionIdRaw
+		: isNotionIdLike(studentId)
+			? studentId
+			: "";
+	return {
+		notionId,
+		studentId,
+		displayName,
+		nickname,
+		realName,
+		choiceLabel,
+	};
+}
+
+function getStudentRecordByAnyId(id) {
+	const key = trimText(id);
+	if (!key) return null;
+	return state.studentsByNotionId.get(key) || state.studentsByStudentId.get(key) || null;
+}
+
+function getSelectedAuthorIds(selectEl) {
+	if (!selectEl) return [];
+	return Array.from(selectEl.selectedOptions || [])
+		.map((opt) => trimText(opt.value))
+		.filter(Boolean);
+}
+
+function setSelectedAuthorIds(selectEl, ids) {
+	const selected = new Set((Array.isArray(ids) ? ids : []).map((id) => trimText(id)).filter(Boolean));
+	Array.from(selectEl.options || []).forEach((opt) => {
+		opt.selected = selected.has(trimText(opt.value));
+	});
+}
+
+function ensureAuthorOption(selectEl, record) {
+	if (!record?.notionId) return false;
+	const value = trimText(record.notionId);
+	if (!value) return false;
+	const existing = Array.from(selectEl.options || []).find((opt) => trimText(opt.value) === value);
+	if (existing) {
+		if (record.choiceLabel) existing.textContent = record.choiceLabel;
+		return true;
+	}
+	selectEl.appendChild(el("option", { value, text: record.choiceLabel || record.displayName || value }));
+	return true;
+}
+
 function tagsFreshnessWarning() {
 	const generatedAt = state.tagsIndex?.generated_at;
 	if (!generatedAt) return "";
@@ -254,15 +342,10 @@ async function loadSchemaAndIndexes() {
 
 	if (state.studentsIndex?.students) {
 		for (const s of state.studentsIndex.students) {
-			const displayName = String(s.display_name || "").trim();
-			const studentId = String(s.student_id || "").trim();
-			const notionIdRaw = String(s.notion_id || s.notionId || s.id || "").trim();
-			const notionId = isNotionIdLike(notionIdRaw) ? notionIdRaw : isNotionIdLike(studentId) ? studentId : "";
-			if (!displayName) continue;
-
-			const record = { notionId, studentId, displayName };
-			if (notionId) state.studentsByNotionId.set(notionId, record);
-			if (studentId) state.studentsByStudentId.set(studentId, record);
+			const record = buildStudentRecord(s);
+			if (!record.displayName) continue;
+			if (record.notionId) state.studentsByNotionId.set(record.notionId, record);
+			if (record.studentId) state.studentsByStudentId.set(record.studentId, record);
 		}
 	}
 
@@ -328,10 +411,14 @@ function getAuthorCandidatesForWork(work) {
 	const participants = Array.isArray(group?.participants) ? group.participants : [];
 	return participants
 		.map((p) => {
-			const studentId = String(p.student_id || "").trim();
+			const studentId = trimText(p.student_id);
 			const mapped = studentId ? state.studentsByStudentId.get(studentId) : null;
-			const notionId = mapped?.notionId || (isNotionIdLike(studentId) ? studentId : "");
-			const label = String(p.display_name || mapped?.displayName || studentId || "").trim();
+			const fallback = buildStudentRecord({
+				student_id: studentId,
+				display_name: trimText(p.display_name),
+			});
+			const notionId = mapped?.notionId || fallback.notionId || "";
+			const label = mapped?.choiceLabel || fallback.choiceLabel || studentId;
 			return notionId && label ? { id: notionId, label } : null;
 		})
 		.filter(Boolean);
@@ -516,19 +603,28 @@ function updateUploadGroupAndAuthorCandidates() {
 	}
 
 	const participants = Array.isArray(selectedGroup?.participants) ? selectedGroup.participants : [];
+	const selectedAuthorIds = getSelectedAuthorIds(authorSelect);
 	const options = participants
 		.map((p) => {
-			const studentId = String(p.student_id || "").trim();
+			const studentId = trimText(p.student_id);
 			const mapped = studentId ? state.studentsByStudentId.get(studentId) : null;
-			const value = mapped?.notionId || studentId;
-			const label = String(p.display_name || mapped?.displayName || studentId || "").trim();
+			const fallback = buildStudentRecord({
+				student_id: studentId,
+				display_name: trimText(p.display_name),
+			});
+			const value = trimText(mapped?.notionId || fallback.notionId);
+			const label = trimText(mapped?.choiceLabel || fallback.choiceLabel);
 			return value && label ? { value, label } : null;
 		})
 		.filter(Boolean);
 
 	authorSelect.innerHTML = "";
-	authorSelect.appendChild(el("option", { value: "", text: "未選択" }));
 	options.forEach((o) => authorSelect.appendChild(el("option", { value: o.value, text: o.label })));
+	for (const selectedId of selectedAuthorIds) {
+		const record = getStudentRecordByAnyId(selectedId);
+		if (record) ensureAuthorOption(authorSelect, record);
+	}
+	setSelectedAuthorIds(authorSelect, selectedAuthorIds);
 }
 
 function initUpload() {
@@ -599,15 +695,15 @@ function initStudentSearch() {
 		resultsRoot.innerHTML = "";
 		items.slice(0, 12).forEach((s) => {
 			const item = el("div", { class: "suggest-item" }, [
-				el("span", { text: s.displayName }),
+				el("span", { text: s.choiceLabel || s.displayName }),
 				el("span", { class: "suggest-item__hint", text: s.studentId ? `(${s.studentId})` : "" }),
 			]);
 			item.addEventListener("click", () => {
-				const value = s.notionId || s.studentId;
-				if (!value) return;
-				const existing = Array.from(authorSelect.options).some((o) => o.value === value);
-				if (!existing) authorSelect.appendChild(el("option", { value, text: s.displayName }));
-				authorSelect.value = value;
+				if (!s.notionId) return;
+				ensureAuthorOption(authorSelect, s);
+				const selected = new Set(getSelectedAuthorIds(authorSelect));
+				selected.add(s.notionId);
+				setSelectedAuthorIds(authorSelect, Array.from(selected));
 				resultsRoot.innerHTML = "";
 				input.value = "";
 			});
@@ -627,7 +723,7 @@ function initStudentSearch() {
 				const keyId = s.notionId || s.studentId;
 				if (!keyId || seen.has(keyId)) continue;
 				seen.add(keyId);
-				const key = normalizeSearch(s.displayName);
+				const key = normalizeSearch([s.displayName, s.choiceLabel, s.studentId].filter(Boolean).join(" "));
 				if (key.includes(q)) hits.push(s);
 			}
 
@@ -635,11 +731,16 @@ function initStudentSearch() {
 				try {
 					const remote = await apiFetch(`/admin/notion/search-students?q=${encodeURIComponent(raw)}`);
 					for (const r of remote.results || []) {
-						const notionId = String(r.id || "").trim();
-						const displayName = String(r.name || "").trim();
-						if (!notionId || !displayName || seen.has(notionId)) continue;
+						const record = buildStudentRecord({
+							id: trimText(r.id),
+							display_name: trimText(r.name),
+							nickname: trimText(r.nickname),
+							real_name: trimText(r.real_name),
+						});
+						const notionId = record.notionId;
+						if (!notionId || !record.displayName || seen.has(notionId)) continue;
 						seen.add(notionId);
-						hits.push({ notionId, studentId: "", displayName });
+						hits.push(record);
 					}
 				} catch {
 					// noop
@@ -785,9 +886,9 @@ function renderChildSuggest(root, { explicitIds, derivedIds, onAdd }) {
 
 function computeUploadReadyDefault() {
 	const title = qs("#upload-title").value.trim();
-	const author = qs("#upload-author").value.trim();
+	const authorIds = getSelectedAuthorIds(qs("#upload-author"));
 	const tags = state.upload.explicitTagIds || [];
-	return Boolean(title && author && tags.length > 0);
+	return Boolean(title && authorIds.length > 0 && tags.length > 0);
 }
 
 async function submitUpload() {
@@ -806,8 +907,9 @@ async function submitUpload() {
 
 	const venue = qs("#upload-venue").value || "";
 
-	const authorId = qs("#upload-author").value.trim();
-	if (authorId && !isNotionIdLike(authorId)) {
+	const authorIds = getSelectedAuthorIds(qs("#upload-author"));
+	const invalidAuthorIds = authorIds.filter((id) => !isNotionIdLike(id));
+	if (invalidAuthorIds.length > 0) {
 		return showToast("作者IDがNotion page idではありません。students_index.jsonに notion_id を含めるか、Notion検索で選択してください。");
 	}
 
@@ -840,7 +942,7 @@ async function submitUpload() {
 			completedDate,
 			classroom,
 			venue,
-			authorId,
+			authorIds,
 			caption,
 			tagIds,
 			ready,
@@ -1066,11 +1168,11 @@ function renderWorkModal(work, index) {
 	readyCb.checked = Boolean(work.ready);
 
 	const authorSelect = el("select", { class: "input" });
-	authorSelect.appendChild(el("option", { value: "", text: "未選択" }));
+	authorSelect.multiple = true;
 	for (const s of state.studentsByNotionId.values()) {
-		authorSelect.appendChild(el("option", { value: s.notionId, text: s.displayName }));
+		authorSelect.appendChild(el("option", { value: s.notionId, text: s.choiceLabel || s.displayName }));
 	}
-	authorSelect.value = work.authorIds?.[0] || "";
+	setSelectedAuthorIds(authorSelect, Array.isArray(work.authorIds) ? work.authorIds : []);
 
 	const authorCandidates = getAuthorCandidatesForWork(work);
 	const authorCandidateChips = el("div", { class: "chips" });
@@ -1079,8 +1181,16 @@ function renderWorkModal(work, index) {
 			const chip = el("span", { class: "chip" });
 			chip.appendChild(el("span", { text: c.label }));
 			chip.addEventListener("click", () => {
-				authorSelect.value = c.id;
-				showToast(`作者候補を選択: ${c.label}`);
+				const selected = new Set(getSelectedAuthorIds(authorSelect));
+				if (selected.has(c.id)) {
+					selected.delete(c.id);
+					showToast(`作者候補を解除: ${c.label}`);
+				} else {
+					ensureAuthorOption(authorSelect, buildStudentRecord({ id: c.id, display_name: c.label }));
+					selected.add(c.id);
+					showToast(`作者候補を追加: ${c.label}`);
+				}
+				setSelectedAuthorIds(authorSelect, Array.from(selected));
 			});
 			authorCandidateChips.appendChild(chip);
 		});
@@ -1380,7 +1490,7 @@ function renderWorkModal(work, index) {
 		const payload = {
 			id: work.id,
 			title: titleInput.value.trim(),
-			authorId: authorSelect.value || "",
+			authorIds: getSelectedAuthorIds(authorSelect),
 			caption: captionInput.value.trim(),
 			tagIds,
 			ready: forceReady ? true : readyCb.checked,
@@ -1399,7 +1509,7 @@ function renderWorkModal(work, index) {
 				state.curation.works = state.curation.works.filter((w) => w.id !== work.id);
 			} else {
 				const idxAll = state.curation.works.findIndex((w) => w.id === work.id);
-				if (idxAll >= 0) state.curation.works[idxAll] = { ...work, ...payload, authorIds: payload.authorId ? [payload.authorId] : [], tagIds, ready: payload.ready };
+				if (idxAll >= 0) state.curation.works[idxAll] = { ...work, ...payload, authorIds: payload.authorIds || [], tagIds, ready: payload.ready };
 			}
 
 			applyCurationFilters();

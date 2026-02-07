@@ -269,6 +269,27 @@ function normalizeStatus(raw) {
 	return "active";
 }
 
+function firstNChars(value, n) {
+	return Array.from(asString(value).trim()).slice(0, n).join("");
+}
+
+function splitStudentNameLabel(value) {
+	const raw = asString(value).trim();
+	if (!raw) return { nickname: "", realName: "" };
+	const match = raw.match(/^(.+?)\s*[|｜]\s*(.+)$/u);
+	if (!match) return { nickname: raw, realName: "" };
+	return { nickname: asString(match[1]).trim(), realName: asString(match[2]).trim() };
+}
+
+function normalizeNickname(nickname, realName) {
+	const nick = asString(nickname).trim();
+	const real = asString(realName).trim();
+	if (!nick) return "";
+	if (!real) return nick;
+	if (nick !== real) return nick;
+	return firstNChars(real, 2) || nick;
+}
+
 function parseNotionId(value) {
 	const id = asString(value).trim();
 	if (!id) return "";
@@ -349,12 +370,17 @@ async function buildStudentsIndex({
 				const participants = Array.isArray(group?.participants) ? group.participants : [];
 				for (const p of participants) {
 					const studentId = asString(p?.student_id).trim();
-					const displayName = asString(p?.display_name).trim() || studentId;
+					const parsed = splitStudentNameLabel(asString(p?.display_name).trim());
+					const realName = parsed.realName;
+					const nickname = normalizeNickname(parsed.nickname || studentId, realName);
+					const displayName = nickname || realName || studentId;
 					if (!studentId || !displayName) continue;
 					if (!recordsByStudentId.has(studentId)) {
 						recordsByStudentId.set(studentId, {
 							notion_id: parseNotionId(studentId),
 							student_id: studentId,
+							nickname,
+							real_name: realName,
 							display_name: displayName,
 						});
 					}
@@ -390,15 +416,20 @@ async function buildStudentsIndex({
 		const notionId = asString(page?.id).trim();
 		if (!notionId) continue;
 		const studentId = extractPropertyText(getProperty(page, studentIdProp)).trim();
-		const displayName =
-			extractPropertyText(getProperty(page, titleProp)).trim() ||
+		const titleText = extractPropertyText(getProperty(page, titleProp)).trim();
+		const parsed = splitStudentNameLabel(titleText);
+		const realName = extractPropertyText(getProperty(page, realNameProp)).trim() || parsed.realName;
+		const nicknameRaw =
 			extractPropertyText(getProperty(page, nicknameProp)).trim() ||
-			extractPropertyText(getProperty(page, realNameProp)).trim() ||
-			studentId ||
-			notionId;
+			parsed.nickname ||
+			titleText;
+		const nickname = normalizeNickname(nicknameRaw, realName);
+		const displayName = nickname || realName || studentId || notionId;
 		records.push({
 			notion_id: notionId,
 			student_id: studentId,
+			nickname,
+			real_name: realName,
 			display_name: displayName,
 		});
 	}
@@ -417,6 +448,8 @@ async function buildStudentsIndex({
 			students_db_id: resolvedStudentsDbId,
 			title_prop: titleProp,
 			student_id_prop: studentIdProp,
+			nickname_prop: nicknameProp,
+			real_name_prop: realNameProp,
 		},
 		students: records,
 	};
