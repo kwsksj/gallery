@@ -3258,8 +3258,9 @@
 				const authorCounts = new Map();
 				const studioCounts = new Map();
 				works.forEach((w) => {
-					if (w.author)
-						authorCounts.set(w.author, (authorCounts.get(w.author) || 0) + 1);
+					splitAuthorValues(w.author).forEach((author) => {
+						authorCounts.set(author, (authorCounts.get(author) || 0) + 1);
+					});
 					if (w.studio)
 						studioCounts.set(w.studio, (studioCounts.get(w.studio) || 0) + 1);
 					if (Array.isArray(w.tags)) {
@@ -3281,6 +3282,20 @@
 					studio: toList(studioCounts),
 					total: works.length,
 				};
+			}
+
+			function splitAuthorValues(authorValue) {
+				if (!authorValue) return [];
+				const values = Array.isArray(authorValue)
+					? authorValue
+					: String(authorValue).split(/\s*[\/／]\s*/);
+				return Array.from(
+					new Set(
+						values
+							.map((v) => String(v || "").trim())
+							.filter(Boolean),
+					),
+				);
 			}
 
 			const FILTER_LABELS = {
@@ -3392,7 +3407,8 @@
 				let works = state.works;
 				if (type && value) {
 					works = works.filter((w) => {
-						if (type === "author") return w.author === value;
+						if (type === "author")
+							return splitAuthorValues(w.author).includes(value);
 						if (type === "studio") return w.studio === value;
 						if (type === "tag")
 							return Array.isArray(w.tags) && w.tags.includes(value);
@@ -3853,14 +3869,17 @@
 
 				const headerMeta = document.createElement("div");
 				headerMeta.className = "modal-meta-line";
-				if (work.author) {
+				const authors = splitAuthorValues(work.author);
+				if (authors.length > 0) {
 					const authorInline = document.createElement("span");
 					authorInline.className = "modal-meta-inline";
 					const authorLabel = document.createElement("span");
 					authorLabel.className = "modal-meta-label";
 					authorLabel.textContent = "作者";
 					authorInline.appendChild(authorLabel);
-					authorInline.appendChild(makeChip("author", work.author, true, ""));
+					authors.forEach((author) => {
+						authorInline.appendChild(makeChip("author", author, true, ""));
+					});
 					headerMeta.appendChild(authorInline);
 				}
 				if (work.studio) {
