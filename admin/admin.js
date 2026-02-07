@@ -144,7 +144,7 @@ function buildStudentRecord(raw) {
 		notionId,
 		studentId,
 		displayName,
-		nickname: displayName,
+		nickname,
 		realName,
 		choiceLabel,
 	};
@@ -1179,21 +1179,21 @@ function renderWorkModal(work, index) {
 	if (authorCandidates.length > 0) {
 		authorCandidates.forEach((c) => {
 			const chip = el("span", { class: "chip" });
-				chip.appendChild(el("span", { text: c.label }));
-				chip.addEventListener("click", () => {
-					const selected = new Set(getSelectedAuthorIds(authorSelect));
-					if (selected.has(c.id)) {
-						selected.delete(c.id);
-						showToast(`作者候補を解除: ${c.label}`);
-					} else {
-						ensureAuthorOption(authorSelect, buildStudentRecord({ id: c.id, display_name: c.label }));
-						selected.add(c.id);
-						showToast(`作者候補を追加: ${c.label}`);
-					}
-					setSelectedAuthorIds(authorSelect, Array.from(selected));
-				});
-				authorCandidateChips.appendChild(chip);
+			chip.appendChild(el("span", { text: c.label }));
+			chip.addEventListener("click", () => {
+				const selected = new Set(getSelectedAuthorIds(authorSelect));
+				if (selected.has(c.id)) {
+					selected.delete(c.id);
+					showToast(`作者候補を解除: ${c.label}`);
+				} else {
+					ensureAuthorOption(authorSelect, buildStudentRecord({ id: c.id, display_name: c.label }));
+					selected.add(c.id);
+					showToast(`作者候補を追加: ${c.label}`);
+				}
+				setSelectedAuthorIds(authorSelect, Array.from(selected));
 			});
+			authorCandidateChips.appendChild(chip);
+		});
 	} else {
 		authorCandidateChips.appendChild(el("div", { class: "subnote", text: "当日参加者候補なし（名簿から選択してください）" }));
 	}
