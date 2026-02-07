@@ -362,6 +362,27 @@ function asString(value) {
   return typeof value === "string" ? value : "";
 }
 
+function firstNChars(value, n) {
+  return Array.from(asString(value).trim()).slice(0, n).join("");
+}
+
+function splitStudentNameLabel(value) {
+  const raw = asString(value).trim();
+  if (!raw) return { nickname: "", realName: "" };
+  const match = raw.match(/^(.+?)\s*[|｜]\s*(.+)$/u);
+  if (!match) return { nickname: raw, realName: "" };
+  return { nickname: asString(match[1]).trim(), realName: asString(match[2]).trim() };
+}
+
+function normalizeNickname(value, realName) {
+  const nickname = asString(value).trim();
+  const real = asString(realName).trim();
+  if (!nickname) return "";
+  if (!real) return nickname;
+  if (nickname !== real) return nickname;
+  return firstNChars(real, 2) || nickname;
+}
+
 function normalizeYmd(value) {
   const raw = asString(value).trim();
   if (!raw) return "";
@@ -492,8 +513,12 @@ function pickWorkProperties(env, payload) {
   if ("caption" in payload && worksProps.caption) props[worksProps.caption] = notionRichText(payload.caption);
   if ("ready" in payload && worksProps.ready) props[worksProps.ready] = notionCheckbox(payload.ready);
 
-  if ("authorId" in payload && worksProps.author)
+  if ("authorIds" in payload && worksProps.author) {
+    const ids = Array.isArray(payload.authorIds) ? payload.authorIds : [];
+    props[worksProps.author] = notionRelation(ids);
+  } else if ("authorId" in payload && worksProps.author) {
     props[worksProps.author] = notionRelation(payload.authorId ? [payload.authorId] : []);
+  }
   if ("tagIds" in payload && worksProps.tags)
     props[worksProps.tags] = notionRelation(Array.isArray(payload.tagIds) ? payload.tagIds : []);
   if ("images" in payload && worksProps.images) props[worksProps.images] = notionExternalFiles(payload.images);
@@ -631,6 +656,8 @@ async function handleNotionSearchStudents(url, env) {
 
   const titleProp = findFirstDatabasePropertyNameByType(studentsDbRes.data, "title");
   if (!titleProp) return serverError("students title property not found");
+  const nicknameProp = studentsDbRes.data?.properties?.["ニックネーム"] ? "ニックネーム" : "";
+  const realNameProp = studentsDbRes.data?.properties?.["本名"] ? "本名" : "";
 
   const queryRes = await notionFetch(env, `/databases/${studentsDbId}/query`, {
     method: "POST",
@@ -650,8 +677,13 @@ async function handleNotionSearchStudents(url, env) {
     ? queryRes.data.results.map((page) => {
         const id = asString(page?.id);
         const parts = page?.properties?.[titleProp]?.title || [];
-        const name = parts.map((t) => asString(t?.plain_text)).join("");
-        return id && name ? { id, name } : null;
+        const title = parts.map((t) => asString(t?.plain_text)).join("").trim();
+        const parsed = splitStudentNameLabel(title);
+        const realName = (realNameProp ? extractPropertyText(getPageProperty(page, realNameProp)) : "").trim() || parsed.realName;
+        const nicknameRaw = (nicknameProp ? extractPropertyText(getPageProperty(page, nicknameProp)) : "").trim() || parsed.nickname || title;
+        const nickname = normalizeNickname(nicknameRaw, realName) || parsed.nickname || title;
+        const name = realName ? `${nickname}｜${realName}` : nickname;
+        return id && name ? { id, name, nickname, real_name: realName } : null;
       }).filter(Boolean)
     : [];
 
@@ -825,7 +857,7 @@ async function handleImageSplit(request, env) {
     completedDate: source.completedDate,
     classroom: source.classroom,
     venue: source.venue,
-    authorId: source.authorIds[0] || "",
+    authorIds: source.authorIds,
     tagIds: source.tagIds,
     caption: source.caption,
     ready: false,
