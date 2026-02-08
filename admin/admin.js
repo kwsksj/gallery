@@ -12,7 +12,9 @@ const state = {
 	studentsByStudentId: new Map(),
 	tagsIndex: null,
 	tagsById: new Map(),
+	tagsByNormalizedName: new Map(),
 	tagsSearch: [],
+	tagsIndexLoaded: false,
 	upload: {
 		files: [],
 		coverIndex: 0,
@@ -441,9 +443,20 @@ function renderChips(root, { explicitIds, derivedIds, onRemove }) {
 	derivedIds.forEach((id) => root.appendChild(mkChip(id, { derived: true })));
 }
 
+function normalizeTagNameKey(name) {
+	return normalizeSearch(name);
+}
+
+function indexTagName(tag) {
+	const key = normalizeTagNameKey(tag?.name);
+	if (!key || !tag?.id) return;
+	state.tagsByNormalizedName.set(key, trimText(tag.id));
+}
+
 function buildTagSearchList(tagsIndex) {
 	const tags = Array.isArray(tagsIndex?.tags) ? tagsIndex.tags : [];
 	const list = [];
+	state.tagsByNormalizedName.clear();
 	for (const t of tags) {
 		if (!t || !t.id) continue;
 		const tag = {
@@ -457,6 +470,7 @@ function buildTagSearchList(tagsIndex) {
 			usage_count: Number.isFinite(Number(t.usage_count)) ? Number(t.usage_count) : 0,
 		};
 		state.tagsById.set(tag.id, tag);
+		indexTagName(tag);
 		const tokens = [tag.name, ...tag.aliases].filter(Boolean).map(normalizeSearch);
 		list.push({ tag, tokens });
 	}
@@ -498,6 +512,11 @@ function upsertTagSearchEntry(rawTag) {
 			: Number(prev.usage_count || 0),
 	};
 	state.tagsById.set(tag.id, tag);
+	const prevNameKey = normalizeTagNameKey(prev?.name);
+	if (prevNameKey && state.tagsByNormalizedName.get(prevNameKey) === tag.id) {
+		state.tagsByNormalizedName.delete(prevNameKey);
+	}
+	indexTagName(tag);
 
 	const tokens = [tag.name, ...tag.aliases].filter(Boolean).map(normalizeSearch);
 	const existingIdx = state.tagsSearch.findIndex((entry) => entry.tag?.id === tag.id);
@@ -510,17 +529,17 @@ function upsertTagSearchEntry(rawTag) {
 }
 
 function findExistingTagIdByName(name) {
-	const q = normalizeSearch(name);
+	const q = normalizeTagNameKey(name);
 	if (!q) return "";
-	for (const tag of state.tagsById.values()) {
-		if (normalizeSearch(tag?.name) === q) return trimText(tag.id);
-	}
-	return "";
+	return trimText(state.tagsByNormalizedName.get(q));
 }
 
 async function createTagFromUi(rawName) {
 	const name = trimText(rawName);
 	if (!name) throw new Error("タグ名を入力してください");
+	if (!state.tagsIndexLoaded) {
+		throw new Error("タグインデックス未取得のため新規作成できません。再読み込み後にお試しください。");
+	}
 
 	const existingId = findExistingTagIdByName(name);
 	if (existingId) {
@@ -582,11 +601,15 @@ async function loadGalleryUpdatedAt() {
 }
 
 async function loadSchemaAndIndexes() {
+	state.tagsIndexLoaded = false;
 	const tasks = [
 		apiFetch("/admin/notion/schema").then((d) => (state.schema = d)),
 		apiFetch("/participants-index").then((d) => (state.participantsIndex = d.data)),
 		apiFetch("/students-index").then((d) => (state.studentsIndex = d.data)),
-		apiFetch("/tags-index").then((d) => (state.tagsIndex = d.data)),
+		apiFetch("/tags-index").then((d) => {
+			state.tagsIndex = d.data;
+			state.tagsIndexLoaded = true;
+		}),
 	];
 
 	const results = await Promise.allSettled(tasks);
@@ -1061,6 +1084,15 @@ function initTagInput(prefix) {
 
 		const q = String(query || "").trim();
 		if (q && list.length < 6) {
+			if (!state.tagsIndexLoaded) {
+				suggestRoot.appendChild(
+					el("div", { class: "suggest-item" }, [
+						el("span", { text: "タグインデックス未取得" }),
+						el("span", { class: "suggest-item__hint", text: "新規作成はできません" }),
+					]),
+				);
+				return;
+			}
 			const existingId = findExistingTagIdByName(q);
 			if (!existingId) {
 				const create = el("div", { class: "suggest-item" }, [
@@ -1481,6 +1513,15 @@ function renderWorkModal(work, index) {
 		});
 
 		if (q && list.length < 6 && !findExistingTagIdByName(q)) {
+			if (!state.tagsIndexLoaded) {
+				tagSuggest.appendChild(
+					el("div", { class: "suggest-item" }, [
+						el("span", { text: "タグインデックス未取得" }),
+						el("span", { class: "suggest-item__hint", text: "新規作成はできません" }),
+					]),
+				);
+				return;
+			}
 			const create = el("div", { class: "suggest-item" }, [
 				el("span", { text: `「${q}」を新規作成` }),
 				el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),

@@ -80,9 +80,7 @@
 	display: none;
 }
 
-.admin-auth-controls:not(.is-authenticated) [data-auth-role="edit"],
-.admin-auth-controls:not(.is-authenticated) [data-auth-role="clear"],
-.admin-auth-controls:not(.is-authenticated) .auth-state {
+.admin-auth-controls:not(.is-authenticated) [data-auth-role="clear"] {
 	display: none;
 }
 
