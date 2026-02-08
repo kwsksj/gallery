@@ -107,7 +107,6 @@ function timingSafeEqual(a, b) {
   const bBuf = encoder.encode(b);
 
   // Cloudflare Workers: crypto.subtle.timingSafeEqual
-  // Node.js (Wrangler/Miniflare): require("node:crypto").timingSafeEqual
   if (typeof crypto !== "undefined" && crypto.subtle && typeof crypto.subtle.timingSafeEqual === "function") {
     if (aBuf.byteLength !== bBuf.byteLength) {
       crypto.subtle.timingSafeEqual(bBuf, bBuf);
@@ -116,23 +115,15 @@ function timingSafeEqual(a, b) {
     return crypto.subtle.timingSafeEqual(aBuf, bBuf);
   }
 
-  // Fallback for Node.js environments (Wrangler local dev / Miniflare)
-  try {
-    const nodeCrypto = require("node:crypto");
-    if (aBuf.byteLength !== bBuf.byteLength) {
-      nodeCrypto.timingSafeEqual(bBuf, bBuf);
-      return false;
-    }
-    return nodeCrypto.timingSafeEqual(aBuf, bBuf);
-  } catch {
-    // Last resort: constant-time comparison via bitwise OR
-    if (aBuf.byteLength !== bBuf.byteLength) return false;
-    let result = 0;
-    for (let i = 0; i < aBuf.byteLength; i++) {
-      result |= aBuf[i] ^ bBuf[i];
-    }
-    return result === 0;
+  // Fallback without Node.js compatibility flags.
+  let result = aBuf.byteLength ^ bBuf.byteLength;
+  const maxLen = Math.max(aBuf.byteLength, bBuf.byteLength);
+  for (let i = 0; i < maxLen; i++) {
+    const av = i < aBuf.byteLength ? aBuf[i] : 0;
+    const bv = i < bBuf.byteLength ? bBuf[i] : 0;
+    result |= av ^ bv;
   }
+  return result === 0;
 }
 
 function requireAdminAuthorization(request, env) {
