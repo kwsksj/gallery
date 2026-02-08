@@ -1,6 +1,7 @@
 import { debounce, el, formatIso, normalizeSearch, qs, qsa, showToast } from "../shared/gallery-core.js";
 
 const ADMIN_API_TOKEN_STORAGE_KEY = "gallery.adminApiToken.v1";
+const COMPACT_HEADER_MEDIA_QUERY = "(max-width: 760px)";
 
 const state = {
 	config: null,
@@ -47,7 +48,7 @@ function clearStoredAdminToken() {
 	} catch {}
 }
 
-function getConfiguredAdminToken() {
+function getPersistedAdminToken() {
 	const tokenFromWindow = trimText(window.ADMIN_API_TOKEN);
 	if (tokenFromWindow) {
 		storeAdminToken(tokenFromWindow);
@@ -58,37 +59,103 @@ function getConfiguredAdminToken() {
 		storeAdminToken(tokenFromConfig);
 		return tokenFromConfig;
 	}
-	const tokenFromInput = trimText(qs("#admin-api-token")?.value);
-	if (tokenFromInput) {
-		storeAdminToken(tokenFromInput);
-		return tokenFromInput;
-	}
 	return readStoredAdminToken();
+}
+
+function getConfiguredAdminToken() {
+	const tokenFromInput = trimText(qs("#admin-api-token")?.value);
+	if (tokenFromInput) return tokenFromInput;
+	return getPersistedAdminToken();
 }
 
 function ensureAdminToken() {
 	const existing = getConfiguredAdminToken();
 	if (existing) return existing;
-	throw new Error("管理APIトークンを設定してください（ヘッダー右上）");
+	throw new Error("管理APIトークンを設定してください（ヘッダーの操作メニュー）");
 }
 
 function isAdminPath(path) {
 	return String(path || "").startsWith("/admin/");
 }
 
+function isCompactHeaderViewport() {
+	return window.matchMedia(COMPACT_HEADER_MEDIA_QUERY).matches;
+}
+
+function setHeaderToolsOpen(open) {
+	const header = qs(".app-header");
+	const toggleBtn = qs("#app-header-tools-toggle");
+	if (!header || !toggleBtn) return;
+	const next = Boolean(open);
+	header.classList.toggle("is-tools-open", next);
+	toggleBtn.setAttribute("aria-expanded", next ? "true" : "false");
+	toggleBtn.textContent = next ? "閉じる" : "操作";
+}
+
+function ensureHeaderToolsVisibleOnMobile() {
+	if (!isCompactHeaderViewport()) return;
+	setHeaderToolsOpen(true);
+}
+
+function initHeaderToolsToggle() {
+	const toggleBtn = qs("#app-header-tools-toggle");
+	if (!toggleBtn) return;
+
+	const sync = () => {
+		if (isCompactHeaderViewport()) {
+			if (!qs(".app-header")?.classList.contains("is-tools-open")) {
+				setHeaderToolsOpen(false);
+			}
+			return;
+		}
+		setHeaderToolsOpen(false);
+	};
+
+	toggleBtn.addEventListener("click", () => {
+		if (!isCompactHeaderViewport()) return;
+		const isOpen = qs(".app-header")?.classList.contains("is-tools-open");
+		setHeaderToolsOpen(!isOpen);
+	});
+	window.addEventListener("resize", debounce(sync, 60));
+	sync();
+}
+
 function reflectAdminTokenToInput() {
 	const input = qs("#admin-api-token");
 	if (!input) return;
-	input.value = getConfiguredAdminToken() || "";
+	input.value = getPersistedAdminToken() || "";
+}
+
+function syncAdminAuthControls({ editing = false, focusInput = false } = {}) {
+	const controls = qs("#admin-auth-controls");
+	const input = qs("#admin-api-token");
+	const stateEl = qs("#admin-auth-state");
+	if (!controls || !input) return;
+
+	const hasToken = Boolean(getPersistedAdminToken());
+	controls.classList.toggle("is-authenticated", hasToken);
+	controls.classList.toggle("is-editing", hasToken && Boolean(editing));
+	if (stateEl) stateEl.textContent = hasToken ? "管理API: 認証済み" : "管理API: 未認証";
+
+	if (focusInput) {
+		ensureHeaderToolsVisibleOnMobile();
+		window.requestAnimationFrame(() => {
+			input.focus();
+			input.select();
+		});
+	}
 }
 
 function initAdminAuthControls() {
 	const input = qs("#admin-api-token");
 	const saveBtn = qs("#admin-api-token-save");
+	const editBtn = qs("#admin-api-token-edit");
 	const clearBtn = qs("#admin-api-token-clear");
-	if (!input || !saveBtn || !clearBtn) return;
+	if (!input || !saveBtn || !editBtn || !clearBtn) return;
 
 	reflectAdminTokenToInput();
+	syncAdminAuthControls();
+	if (!getPersistedAdminToken()) ensureHeaderToolsVisibleOnMobile();
 
 	const saveToken = () => {
 		const token = trimText(input.value);
@@ -97,11 +164,15 @@ function initAdminAuthControls() {
 			return;
 		}
 		storeAdminToken(token);
-		showToast("管理APIトークンを保存しました。再読み込みします。");
-		window.setTimeout(() => window.location.reload(), 150);
+		syncAdminAuthControls();
+		showToast("管理APIトークンを保存しました");
 	};
 
 	saveBtn.addEventListener("click", saveToken);
+	editBtn.addEventListener("click", () => {
+		reflectAdminTokenToInput();
+		syncAdminAuthControls({ editing: true, focusInput: true });
+	});
 	input.addEventListener("keydown", (e) => {
 		if (e.key !== "Enter") return;
 		e.preventDefault();
@@ -110,6 +181,7 @@ function initAdminAuthControls() {
 	clearBtn.addEventListener("click", () => {
 		clearStoredAdminToken();
 		input.value = "";
+		syncAdminAuthControls({ focusInput: true });
 		showToast("管理APIトークンを削除しました");
 	});
 }
@@ -146,9 +218,9 @@ async function apiFetch(path, init = {}) {
 			const input = qs("#admin-api-token");
 			if (input) {
 				input.value = "";
-				input.focus();
 			}
-			throw new Error("認証に失敗しました。管理APIトークンを再入力してください（ヘッダー右上）");
+			syncAdminAuthControls({ focusInput: true });
+			throw new Error("認証に失敗しました。ヘッダーの操作メニューから管理APIトークンを再入力してください。");
 		}
 		const message = data?.error || data?.message || `HTTP ${res.status}`;
 		throw new Error(message);
@@ -485,7 +557,10 @@ function initTabs() {
 	};
 
 	tabs.forEach((tab) => {
-		tab.addEventListener("click", () => activate(tab.dataset.tab));
+		tab.addEventListener("click", () => {
+			activate(tab.dataset.tab);
+			if (isCompactHeaderViewport()) setHeaderToolsOpen(false);
+		});
 	});
 
 	const initial = tabs.find((t) => t.classList.contains("is-active"))?.dataset.tab || "upload";
@@ -1709,6 +1784,7 @@ function initToolsActions() {
 
 async function init() {
 	state.config = getConfig();
+	initHeaderToolsToggle();
 	initAdminAuthControls();
 	initTabs();
 	initHeaderActions();

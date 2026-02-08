@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>先生専用アップロード</title>
 		<link rel="stylesheet" href="./shared/gallery-core.css" />
-		<link rel="stylesheet" href="./admin/admin.css" />
+		<link rel="stylesheet" href="./admin/admin.css?v=20260208-2" />
 	</head>
 	<body>
 		<div
@@ -16,7 +16,18 @@
 		>
 			<header class="app-header">
 				<div class="app-header__left">
-					<div class="app-title">先生専用アップロード</div>
+					<div class="app-header__title-row">
+						<div class="app-title">先生専用アップロード</div>
+						<button
+							id="app-header-tools-toggle"
+							class="btn header-tools-toggle"
+							type="button"
+							aria-expanded="false"
+							aria-controls="app-header-tools"
+						>
+							操作
+						</button>
+					</div>
 					<nav class="tabs" aria-label="画面切替">
 						<button type="button" class="tab is-active" data-tab="upload">
 							アップロード
@@ -27,17 +38,26 @@
 						<button type="button" class="tab" data-tab="tools">ツール</button>
 					</nav>
 				</div>
-				<div class="app-header__right">
-					<div class="inline-controls admin-auth-controls" aria-label="管理API認証">
+				<div id="app-header-tools" class="app-header__right">
+					<div id="admin-auth-controls" class="inline-controls admin-auth-controls" aria-label="管理API認証">
+						<span id="admin-auth-state" class="auth-state" data-auth-role="state" aria-live="polite"></span>
 						<input
 							id="admin-api-token"
 							class="input input--sm"
+							data-auth-role="input"
 							type="password"
 							placeholder="管理APIトークン"
 							autocomplete="off"
 						/>
-						<button id="admin-api-token-save" class="btn" type="button">認証</button>
-						<button id="admin-api-token-clear" class="btn" type="button">解除</button>
+						<button id="admin-api-token-save" class="btn" data-auth-role="save" type="button">
+							認証
+						</button>
+						<button id="admin-api-token-edit" class="btn" data-auth-role="edit" type="button">
+							変更
+						</button>
+						<button id="admin-api-token-clear" class="btn" data-auth-role="clear" type="button">
+							解除
+						</button>
 					</div>
 					<div class="header-meta">
 						<span class="header-meta__label">gallery.json</span>
@@ -227,6 +247,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260208-1"></script>
+		<script type="module" src="./admin/admin.js?v=20260208-2"></script>
 	</body>
 </html>
