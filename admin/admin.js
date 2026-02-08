@@ -1,6 +1,7 @@
 import { debounce, el, formatIso, normalizeSearch, qs, qsa, showToast } from "../shared/gallery-core.js";
 
 const ADMIN_API_TOKEN_STORAGE_KEY = "gallery.adminApiToken.v1";
+const COMPACT_HEADER_MEDIA_QUERY = "(max-width: 760px)";
 
 const state = {
 	config: null,
@@ -11,7 +12,9 @@ const state = {
 	studentsByStudentId: new Map(),
 	tagsIndex: null,
 	tagsById: new Map(),
+	tagsByNormalizedName: new Map(),
 	tagsSearch: [],
+	tagsIndexLoaded: false,
 	upload: {
 		files: [],
 		coverIndex: 0,
@@ -47,7 +50,7 @@ function clearStoredAdminToken() {
 	} catch {}
 }
 
-function getConfiguredAdminToken() {
+function getPersistedAdminToken() {
 	const tokenFromWindow = trimText(window.ADMIN_API_TOKEN);
 	if (tokenFromWindow) {
 		storeAdminToken(tokenFromWindow);
@@ -58,37 +61,103 @@ function getConfiguredAdminToken() {
 		storeAdminToken(tokenFromConfig);
 		return tokenFromConfig;
 	}
-	const tokenFromInput = trimText(qs("#admin-api-token")?.value);
-	if (tokenFromInput) {
-		storeAdminToken(tokenFromInput);
-		return tokenFromInput;
-	}
 	return readStoredAdminToken();
+}
+
+function getConfiguredAdminToken() {
+	const tokenFromInput = trimText(qs("#admin-api-token")?.value);
+	if (tokenFromInput) return tokenFromInput;
+	return getPersistedAdminToken();
 }
 
 function ensureAdminToken() {
 	const existing = getConfiguredAdminToken();
 	if (existing) return existing;
-	throw new Error("管理APIトークンを設定してください（ヘッダー右上）");
+	throw new Error("管理APIトークンを設定してください（ヘッダーの操作メニュー）");
 }
 
 function isAdminPath(path) {
 	return String(path || "").startsWith("/admin/");
 }
 
+function isCompactHeaderViewport() {
+	return window.matchMedia(COMPACT_HEADER_MEDIA_QUERY).matches;
+}
+
+function setHeaderToolsOpen(open) {
+	const header = qs(".app-header");
+	const toggleBtn = qs("#app-header-tools-toggle");
+	if (!header || !toggleBtn) return;
+	const next = Boolean(open);
+	header.classList.toggle("is-tools-open", next);
+	toggleBtn.setAttribute("aria-expanded", next ? "true" : "false");
+	toggleBtn.textContent = next ? "閉じる" : "操作";
+}
+
+function ensureHeaderToolsVisibleOnMobile() {
+	if (!isCompactHeaderViewport()) return;
+	setHeaderToolsOpen(true);
+}
+
+function initHeaderToolsToggle() {
+	const toggleBtn = qs("#app-header-tools-toggle");
+	if (!toggleBtn) return;
+
+	const sync = () => {
+		if (isCompactHeaderViewport()) {
+			if (!qs(".app-header")?.classList.contains("is-tools-open")) {
+				setHeaderToolsOpen(false);
+			}
+			return;
+		}
+		setHeaderToolsOpen(false);
+	};
+
+	toggleBtn.addEventListener("click", () => {
+		if (!isCompactHeaderViewport()) return;
+		const isOpen = qs(".app-header")?.classList.contains("is-tools-open");
+		setHeaderToolsOpen(!isOpen);
+	});
+	window.addEventListener("resize", debounce(sync, 60));
+	sync();
+}
+
 function reflectAdminTokenToInput() {
 	const input = qs("#admin-api-token");
 	if (!input) return;
-	input.value = getConfiguredAdminToken() || "";
+	input.value = getPersistedAdminToken() || "";
+}
+
+function syncAdminAuthControls({ editing = false, focusInput = false } = {}) {
+	const controls = qs("#admin-auth-controls");
+	const input = qs("#admin-api-token");
+	const stateEl = qs("#admin-auth-state");
+	if (!controls || !input) return;
+
+	const hasToken = Boolean(getPersistedAdminToken());
+	controls.classList.toggle("is-authenticated", hasToken);
+	controls.classList.toggle("is-editing", hasToken && Boolean(editing));
+	if (stateEl) stateEl.textContent = hasToken ? "管理API: 認証済み" : "管理API: 未認証";
+
+	if (focusInput) {
+		ensureHeaderToolsVisibleOnMobile();
+		window.requestAnimationFrame(() => {
+			input.focus();
+			input.select();
+		});
+	}
 }
 
 function initAdminAuthControls() {
 	const input = qs("#admin-api-token");
 	const saveBtn = qs("#admin-api-token-save");
+	const editBtn = qs("#admin-api-token-edit");
 	const clearBtn = qs("#admin-api-token-clear");
-	if (!input || !saveBtn || !clearBtn) return;
+	if (!input || !saveBtn || !editBtn || !clearBtn) return;
 
 	reflectAdminTokenToInput();
+	syncAdminAuthControls();
+	if (!getPersistedAdminToken()) ensureHeaderToolsVisibleOnMobile();
 
 	const saveToken = () => {
 		const token = trimText(input.value);
@@ -97,11 +166,15 @@ function initAdminAuthControls() {
 			return;
 		}
 		storeAdminToken(token);
-		showToast("管理APIトークンを保存しました。再読み込みします。");
-		window.setTimeout(() => window.location.reload(), 150);
+		syncAdminAuthControls();
+		showToast("管理APIトークンを保存しました");
 	};
 
 	saveBtn.addEventListener("click", saveToken);
+	editBtn.addEventListener("click", () => {
+		reflectAdminTokenToInput();
+		syncAdminAuthControls({ editing: true, focusInput: true });
+	});
 	input.addEventListener("keydown", (e) => {
 		if (e.key !== "Enter") return;
 		e.preventDefault();
@@ -110,6 +183,7 @@ function initAdminAuthControls() {
 	clearBtn.addEventListener("click", () => {
 		clearStoredAdminToken();
 		input.value = "";
+		syncAdminAuthControls({ focusInput: true });
 		showToast("管理APIトークンを削除しました");
 	});
 }
@@ -146,9 +220,9 @@ async function apiFetch(path, init = {}) {
 			const input = qs("#admin-api-token");
 			if (input) {
 				input.value = "";
-				input.focus();
 			}
-			throw new Error("認証に失敗しました。管理APIトークンを再入力してください（ヘッダー右上）");
+			syncAdminAuthControls({ focusInput: true });
+			throw new Error("認証に失敗しました。ヘッダーの操作メニューから管理APIトークンを再入力してください。");
 		}
 		const message = data?.error || data?.message || `HTTP ${res.status}`;
 		throw new Error(message);
@@ -369,9 +443,20 @@ function renderChips(root, { explicitIds, derivedIds, onRemove }) {
 	derivedIds.forEach((id) => root.appendChild(mkChip(id, { derived: true })));
 }
 
+function normalizeTagNameKey(name) {
+	return normalizeSearch(name);
+}
+
+function indexTagName(tag) {
+	const key = normalizeTagNameKey(tag?.name);
+	if (!key || !tag?.id) return;
+	state.tagsByNormalizedName.set(key, trimText(tag.id));
+}
+
 function buildTagSearchList(tagsIndex) {
 	const tags = Array.isArray(tagsIndex?.tags) ? tagsIndex.tags : [];
 	const list = [];
+	state.tagsByNormalizedName.clear();
 	for (const t of tags) {
 		if (!t || !t.id) continue;
 		const tag = {
@@ -385,10 +470,156 @@ function buildTagSearchList(tagsIndex) {
 			usage_count: Number.isFinite(Number(t.usage_count)) ? Number(t.usage_count) : 0,
 		};
 		state.tagsById.set(tag.id, tag);
+		indexTagName(tag);
 		const tokens = [tag.name, ...tag.aliases].filter(Boolean).map(normalizeSearch);
 		list.push({ tag, tokens });
 	}
 	return list;
+}
+
+function upsertTagSearchEntry(rawTag) {
+	if (!rawTag || !rawTag.id) return null;
+	const id = trimText(rawTag.id);
+	if (!id) return null;
+
+	const prev = state.tagsById.get(id) || {};
+	const aliases = Array.isArray(rawTag.aliases)
+		? rawTag.aliases.map(String)
+		: Array.isArray(prev.aliases)
+			? prev.aliases
+			: [];
+	const parents = Array.isArray(rawTag.parents)
+		? rawTag.parents.map(String)
+		: Array.isArray(prev.parents)
+			? prev.parents
+			: [];
+	const children = Array.isArray(rawTag.children)
+		? rawTag.children.map(String)
+		: Array.isArray(prev.children)
+			? prev.children
+			: [];
+
+	const tag = {
+		id,
+		name: trimText(rawTag.name || prev.name || id),
+		aliases,
+		status: trimText(rawTag.status || prev.status || "active"),
+		merge_to: trimText(rawTag.merge_to || prev.merge_to),
+		parents,
+		children,
+		usage_count: Number.isFinite(Number(rawTag.usage_count))
+			? Number(rawTag.usage_count)
+			: Number(prev.usage_count || 0),
+	};
+	state.tagsById.set(tag.id, tag);
+	const prevNameKey = normalizeTagNameKey(prev?.name);
+	if (prevNameKey && state.tagsByNormalizedName.get(prevNameKey) === tag.id) {
+		state.tagsByNormalizedName.delete(prevNameKey);
+	}
+	indexTagName(tag);
+
+	const tokens = [tag.name, ...tag.aliases].filter(Boolean).map(normalizeSearch);
+	const existingIdx = state.tagsSearch.findIndex((entry) => entry.tag?.id === tag.id);
+	if (existingIdx >= 0) {
+		state.tagsSearch[existingIdx] = { tag, tokens };
+	} else {
+		state.tagsSearch.push({ tag, tokens });
+	}
+	return tag;
+}
+
+function findExistingTagIdByName(name) {
+	const q = normalizeTagNameKey(name);
+	if (!q) return "";
+	return trimText(state.tagsByNormalizedName.get(q));
+}
+
+async function createTagFromUi(rawName) {
+	const name = trimText(rawName);
+	if (!name) throw new Error("タグ名を入力してください");
+	if (!state.tagsIndexLoaded) {
+		throw new Error("タグインデックス未取得のため新規作成できません。再読み込み後にお試しください。");
+	}
+
+	const existingId = findExistingTagIdByName(name);
+	if (existingId) {
+		return { id: existingId, created: false };
+	}
+
+	const created = await apiFetch("/admin/notion/tag", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ name }),
+	});
+	const id = trimText(created?.id);
+	if (!id) throw new Error("タグ作成結果が不正です（idなし）");
+	upsertTagSearchEntry({ id, name, aliases: [], status: "active", merge_to: "", parents: [], children: [], usage_count: 0 });
+	return { id, created: true };
+}
+
+function appendCreateTagSuggest(suggestRoot, query, onCreated) {
+	const q = trimText(query);
+	if (!q) return;
+	if (!state.tagsIndexLoaded) {
+		suggestRoot.appendChild(
+			el("div", { class: "suggest-item" }, [
+				el("span", { text: "タグインデックス未取得" }),
+				el("span", { class: "suggest-item__hint", text: "新規作成はできません" }),
+			]),
+		);
+		return;
+	}
+	if (findExistingTagIdByName(q)) return;
+	const create = el("div", { class: "suggest-item" }, [
+		el("span", { text: `「${q}」を新規作成` }),
+		el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
+	]);
+	let creating = false;
+	create.addEventListener("click", async () => {
+		if (creating) return;
+		creating = true;
+		try {
+			const result = await createTagFromUi(q);
+			const id = resolveMergedTagId(result.id);
+			showToast(result.created ? "タグを作成しました" : "既存タグを追加しました");
+			onCreated(id);
+		} catch (err) {
+			showToast(`タグ作成に失敗: ${err.message}`);
+		} finally {
+			creating = false;
+		}
+	});
+	suggestRoot.appendChild(create);
+}
+
+function renderTitleTagSuggest(root, { getTitle, getExplicitTagIds, onTagAdded }) {
+	root.innerHTML = "";
+	const title = trimText(getTitle());
+	if (!title || !state.tagsIndexLoaded) return;
+
+	const existingId = findExistingTagIdByName(title);
+	const resolvedId = existingId ? resolveMergedTagId(existingId) : "";
+	if (resolvedId && getExplicitTagIds().includes(resolvedId)) return;
+
+	root.appendChild(el("span", { class: "subnote", text: "作品名→タグ：" }));
+	const chip = el("span", { class: "chip" });
+	chip.appendChild(el("span", { text: title }));
+	let adding = false;
+	chip.addEventListener("click", async () => {
+		if (adding) return;
+		adding = true;
+		try {
+			const result = await createTagFromUi(title);
+			const id = resolveMergedTagId(result.id);
+			showToast(result.created ? "タグを作成しました" : "既存タグを追加しました");
+			onTagAdded(id);
+		} catch (err) {
+			showToast(`タグ追加に失敗: ${err.message}`);
+		} finally {
+			adding = false;
+		}
+	});
+	root.appendChild(chip);
 }
 
 function searchTags(query) {
@@ -435,11 +666,15 @@ async function loadGalleryUpdatedAt() {
 }
 
 async function loadSchemaAndIndexes() {
+	state.tagsIndexLoaded = false;
 	const tasks = [
 		apiFetch("/admin/notion/schema").then((d) => (state.schema = d)),
 		apiFetch("/participants-index").then((d) => (state.participantsIndex = d.data)),
 		apiFetch("/students-index").then((d) => (state.studentsIndex = d.data)),
-		apiFetch("/tags-index").then((d) => (state.tagsIndex = d.data)),
+		apiFetch("/tags-index").then((d) => {
+			state.tagsIndex = d.data;
+			state.tagsIndexLoaded = true;
+		}),
 	];
 
 	const results = await Promise.allSettled(tasks);
@@ -485,7 +720,10 @@ function initTabs() {
 	};
 
 	tabs.forEach((tab) => {
-		tab.addEventListener("click", () => activate(tab.dataset.tab));
+		tab.addEventListener("click", () => {
+			activate(tab.dataset.tab);
+			if (isCompactHeaderViewport()) setHeaderToolsOpen(false);
+		});
 	});
 
 	const initial = tabs.find((t) => t.classList.contains("is-active"))?.dataset.tab || "upload";
@@ -869,6 +1107,17 @@ function initTagInput(prefix) {
 	const derivedNote = qs(`#${prefix}-tag-derived-note`);
 	const childSuggestRoot = qs(`#${prefix}-tag-children`);
 
+	const titleTagRoot = el("div", { class: "chips" });
+	childSuggestRoot.after(titleTagRoot);
+
+	const refreshTitleTag = () => {
+		renderTitleTagSuggest(titleTagRoot, {
+			getTitle: () => qs("#upload-title")?.value || "",
+			getExplicitTagIds: () => state.upload.explicitTagIds,
+			onTagAdded: (id) => setState(Array.from(new Set([...state.upload.explicitTagIds, id]))),
+		});
+	};
+
 	const setState = (explicitIds) => {
 		state.upload.explicitTagIds = explicitIds;
 		const derivedIds = computeDerivedParentTagIds(explicitIds);
@@ -881,6 +1130,7 @@ function initTagInput(prefix) {
 		});
 		derivedNote.textContent = derivedIds.length > 0 ? `自動付与（親タグ）: ${derivedIds.length}件` : "";
 		renderChildSuggest(childSuggestRoot, { explicitIds, derivedIds, onAdd: (id) => setState(Array.from(new Set([...explicitIds, id]))) });
+		refreshTitleTag();
 		if (!state.upload.readyTouched) {
 			const readyCb = qs("#upload-ready");
 			if (readyCb) readyCb.checked = computeUploadReadyDefault();
@@ -911,44 +1161,12 @@ function initTagInput(prefix) {
 
 		const q = String(query || "").trim();
 		if (q && list.length < 6) {
-			if (state.tagsSearch.length === 0) {
-				suggestRoot.appendChild(
-					el("div", { class: "suggest-item" }, [
-						el("span", { text: "タグインデックス未取得" }),
-						el("span", { class: "suggest-item__hint", text: "新規作成は抑止しています" }),
-					]),
-				);
-				return;
-			}
-
-			const exact = list.some((t) => t.name === q);
-			if (!exact) {
-				const create = el("div", { class: "suggest-item" }, [
-					el("span", { text: `「${q}」を新規作成` }),
-					el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
-				]);
-				create.addEventListener("click", async () => {
-					try {
-						const created = await apiFetch("/admin/notion/tag", {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ name: q }),
-						});
-						showToast("タグを作成しました");
-						const id = created?.id;
-						if (id) {
-							state.tagsById.set(id, { id, name: q, aliases: [], status: "active", merge_to: "", parents: [], children: [], usage_count: 0 });
-							const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
-							setState(next);
-						}
-						queryEl.value = "";
-						suggestRoot.innerHTML = "";
-					} catch (err) {
-						showToast(`タグ作成に失敗: ${err.message}`);
-					}
-				});
-				suggestRoot.appendChild(create);
-			}
+			appendCreateTagSuggest(suggestRoot, q, (id) => {
+				const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
+				setState(next);
+				queryEl.value = "";
+				suggestRoot.innerHTML = "";
+			});
 		}
 	};
 
@@ -960,6 +1178,9 @@ function initTagInput(prefix) {
 	document.addEventListener("click", () => {
 		suggestRoot.innerHTML = "";
 	});
+
+	const titleEl = qs("#upload-title");
+	if (titleEl) titleEl.addEventListener("input", debounce(refreshTitleTag, 200));
 
 	setState([]);
 }
@@ -1311,7 +1532,19 @@ function renderWorkModal(work, index) {
 	const tagChips = el("div", { class: "chips" });
 	const derivedNote = el("div", { class: "subnote" });
 	const childSuggest = el("div", { class: "chips" });
+	const titleTagRoot = el("div", { class: "chips" });
 	let explicitTagIds = Array.isArray(work.tagIds) ? [...work.tagIds] : [];
+
+	const refreshTitleTag = () => {
+		renderTitleTagSuggest(titleTagRoot, {
+			getTitle: () => titleInput.value || "",
+			getExplicitTagIds: () => explicitTagIds,
+			onTagAdded: (id) => {
+				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
+				renderTags();
+			},
+		});
+	};
 
 	const renderTags = () => {
 		const derived = computeDerivedParentTagIds(explicitTagIds);
@@ -1328,11 +1561,12 @@ function renderWorkModal(work, index) {
 			explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
 			renderTags();
 		}});
+		refreshTitleTag();
 	};
 	renderTags();
 
 	const renderTagSuggest = debounce(() => {
-		const q = tagQuery.value;
+		const q = trimText(tagQuery.value);
 		const list = searchTags(q);
 		tagSuggest.innerHTML = "";
 		list.forEach((t) => {
@@ -1346,8 +1580,18 @@ function renderWorkModal(work, index) {
 			});
 			tagSuggest.appendChild(item);
 		});
+
+		if (q && list.length < 6) {
+			appendCreateTagSuggest(tagSuggest, q, (id) => {
+				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
+				tagQuery.value = "";
+				tagSuggest.innerHTML = "";
+				renderTags();
+			});
+		}
 	}, 120);
 	tagQuery.addEventListener("input", renderTagSuggest);
+	titleInput.addEventListener("input", debounce(refreshTitleTag, 200));
 
 	const viewerWrap = el("div", { class: "image-viewer" });
 
@@ -1541,7 +1785,7 @@ function renderWorkModal(work, index) {
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest]),
+		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [
 			el("label", { class: "checkbox" }, [
@@ -1709,6 +1953,7 @@ function initToolsActions() {
 
 async function init() {
 	state.config = getConfig();
+	initHeaderToolsToggle();
 	initAdminAuthControls();
 	initTabs();
 	initHeaderActions();
