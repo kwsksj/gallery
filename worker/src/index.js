@@ -101,6 +101,18 @@ function getBearerToken(request) {
   return match ? asString(match[1]).trim() : "";
 }
 
+function timingSafeEqual(a, b) {
+  const encoder = new TextEncoder();
+  const aBuf = encoder.encode(a);
+  const bBuf = encoder.encode(b);
+  if (aBuf.byteLength !== bBuf.byteLength) {
+    // Compare against self to keep constant time, then return false
+    crypto.subtle.timingSafeEqual(aBuf, aBuf);
+    return false;
+  }
+  return crypto.subtle.timingSafeEqual(aBuf, bBuf);
+}
+
 function requireAdminAuthorization(request, env) {
   const expectedToken = getEnvString(env, "ADMIN_API_TOKEN");
   if (!expectedToken) {
@@ -108,7 +120,7 @@ function requireAdminAuthorization(request, env) {
   }
 
   const actualToken = getBearerToken(request);
-  if (!actualToken || actualToken !== expectedToken) {
+  if (!actualToken || !timingSafeEqual(actualToken, expectedToken)) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
