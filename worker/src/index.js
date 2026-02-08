@@ -505,6 +505,12 @@ function notionSelect(value) {
   return { select: { name } };
 }
 
+function notionStatus(value) {
+  const name = asString(value).trim();
+  if (!name) return { status: null };
+  return { status: { name } };
+}
+
 function notionDate(ymd) {
   const date = normalizeYmd(ymd);
   if (!date) return { date: null };
@@ -539,6 +545,35 @@ function notionExternalFiles(files) {
     })
     .filter(Boolean);
   return { files: notionFiles };
+}
+
+function listNotionSelectLikeOptionNames(propSchema) {
+  if (!propSchema || typeof propSchema !== "object") return [];
+  if (propSchema.type === "status") {
+    return (propSchema.status?.options || [])
+      .map((opt) => asString(opt?.name).trim())
+      .filter(Boolean);
+  }
+  if (propSchema.type === "select") {
+    return (propSchema.select?.options || [])
+      .map((opt) => asString(opt?.name).trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function resolveDefaultTagStatusName(env, statusPropSchema) {
+  const preferred = asString(getEnvString(env, "NOTION_TAGS_DEFAULT_STATUS", "active")).trim();
+  const options = listNotionSelectLikeOptionNames(statusPropSchema);
+  if (options.length === 0) return preferred;
+
+  const exact = options.find((name) => name.toLowerCase() === preferred.toLowerCase());
+  if (exact) return exact;
+
+  const activeLike = options.find((name) => normalizeTagStatus(name) === "active");
+  if (activeLike) return activeLike;
+
+  return options[0] || preferred;
 }
 
 function pickWorkProperties(env, payload) {
@@ -790,10 +825,28 @@ async function handleNotionCreateTag(request, env) {
   const name = asString(payload.name).trim();
   if (!name) return badRequest("missing name");
 
+  const tagsDbRes = await notionFetch(env, `/databases/${tagsDbId}`, { method: "GET" });
+  if (!tagsDbRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to fetch tags database", detail: tagsDbRes.data }, 500);
+  }
+  const tagsDb = tagsDbRes.data;
   const tagsProps = getTagsProps(env);
+  const titleProp = pickPropertyName(tagsDb, [tagsProps.title, "タグ"], "title");
+  const statusProp = pickPropertyName(tagsDb, [tagsProps.status, "状態"], "");
   const properties = {};
-  properties[tagsProps.title || "タグ"] = notionTitle(name);
-  if (tagsProps.status) properties[tagsProps.status] = notionSelect("active");
+  properties[titleProp || tagsProps.title || "タグ"] = notionTitle(name);
+
+  if (statusProp) {
+    const statusPropSchema = tagsDb?.properties?.[statusProp] || null;
+    const defaultStatusName = resolveDefaultTagStatusName(env, statusPropSchema);
+    if (defaultStatusName) {
+      if (statusPropSchema?.type === "status") {
+        properties[statusProp] = notionStatus(defaultStatusName);
+      } else {
+        properties[statusProp] = notionSelect(defaultStatusName);
+      }
+    }
+  }
 
   const res = await notionFetch(env, "/pages", {
     method: "POST",
