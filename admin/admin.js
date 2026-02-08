@@ -463,6 +463,81 @@ function buildTagSearchList(tagsIndex) {
 	return list;
 }
 
+function upsertTagSearchEntry(rawTag) {
+	if (!rawTag || !rawTag.id) return null;
+	const id = trimText(rawTag.id);
+	if (!id) return null;
+
+	const prev = state.tagsById.get(id) || {};
+	const aliases = Array.isArray(rawTag.aliases)
+		? rawTag.aliases.map(String)
+		: Array.isArray(prev.aliases)
+			? prev.aliases
+			: [];
+	const parents = Array.isArray(rawTag.parents)
+		? rawTag.parents.map(String)
+		: Array.isArray(prev.parents)
+			? prev.parents
+			: [];
+	const children = Array.isArray(rawTag.children)
+		? rawTag.children.map(String)
+		: Array.isArray(prev.children)
+			? prev.children
+			: [];
+
+	const tag = {
+		id,
+		name: trimText(rawTag.name || prev.name || id),
+		aliases,
+		status: trimText(rawTag.status || prev.status || "active"),
+		merge_to: trimText(rawTag.merge_to || prev.merge_to),
+		parents,
+		children,
+		usage_count: Number.isFinite(Number(rawTag.usage_count))
+			? Number(rawTag.usage_count)
+			: Number(prev.usage_count || 0),
+	};
+	state.tagsById.set(tag.id, tag);
+
+	const tokens = [tag.name, ...tag.aliases].filter(Boolean).map(normalizeSearch);
+	const existingIdx = state.tagsSearch.findIndex((entry) => entry.tag?.id === tag.id);
+	if (existingIdx >= 0) {
+		state.tagsSearch[existingIdx] = { tag, tokens };
+	} else {
+		state.tagsSearch.push({ tag, tokens });
+	}
+	return tag;
+}
+
+function findExistingTagIdByName(name) {
+	const q = normalizeSearch(name);
+	if (!q) return "";
+	for (const tag of state.tagsById.values()) {
+		if (normalizeSearch(tag?.name) === q) return trimText(tag.id);
+	}
+	return "";
+}
+
+async function createTagFromUi(rawName) {
+	const name = trimText(rawName);
+	if (!name) throw new Error("タグ名を入力してください");
+
+	const existingId = findExistingTagIdByName(name);
+	if (existingId) {
+		return { id: existingId, created: false };
+	}
+
+	const created = await apiFetch("/admin/notion/tag", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ name }),
+	});
+	const id = trimText(created?.id);
+	if (!id) throw new Error("タグ作成結果が不正です（idなし）");
+	upsertTagSearchEntry({ id, name, aliases: [], status: "active", merge_to: "", parents: [], children: [], usage_count: 0 });
+	return { id, created: true };
+}
+
 function searchTags(query) {
 	const q = normalizeSearch(query);
 	if (!q) return [];
@@ -986,36 +1061,19 @@ function initTagInput(prefix) {
 
 		const q = String(query || "").trim();
 		if (q && list.length < 6) {
-			if (state.tagsSearch.length === 0) {
-				suggestRoot.appendChild(
-					el("div", { class: "suggest-item" }, [
-						el("span", { text: "タグインデックス未取得" }),
-						el("span", { class: "suggest-item__hint", text: "新規作成は抑止しています" }),
-					]),
-				);
-				return;
-			}
-
-			const exact = list.some((t) => t.name === q);
-			if (!exact) {
+			const existingId = findExistingTagIdByName(q);
+			if (!existingId) {
 				const create = el("div", { class: "suggest-item" }, [
 					el("span", { text: `「${q}」を新規作成` }),
 					el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
 				]);
 				create.addEventListener("click", async () => {
 					try {
-						const created = await apiFetch("/admin/notion/tag", {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ name: q }),
-						});
-						showToast("タグを作成しました");
-						const id = created?.id;
-						if (id) {
-							state.tagsById.set(id, { id, name: q, aliases: [], status: "active", merge_to: "", parents: [], children: [], usage_count: 0 });
-							const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
-							setState(next);
-						}
+						const created = await createTagFromUi(q);
+						showToast(created.created ? "タグを作成しました" : "既存タグを追加しました");
+						const resolvedId = resolveMergedTagId(created.id);
+						const next = Array.from(new Set([...state.upload.explicitTagIds, resolvedId]));
+						setState(next);
 						queryEl.value = "";
 						suggestRoot.innerHTML = "";
 					} catch (err) {
@@ -1407,7 +1465,7 @@ function renderWorkModal(work, index) {
 	renderTags();
 
 	const renderTagSuggest = debounce(() => {
-		const q = tagQuery.value;
+		const q = trimText(tagQuery.value);
 		const list = searchTags(q);
 		tagSuggest.innerHTML = "";
 		list.forEach((t) => {
@@ -1421,6 +1479,27 @@ function renderWorkModal(work, index) {
 			});
 			tagSuggest.appendChild(item);
 		});
+
+		if (q && list.length < 6 && !findExistingTagIdByName(q)) {
+			const create = el("div", { class: "suggest-item" }, [
+				el("span", { text: `「${q}」を新規作成` }),
+				el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
+			]);
+			create.addEventListener("click", async () => {
+				try {
+					const created = await createTagFromUi(q);
+					const id = resolveMergedTagId(created.id);
+					explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
+					tagQuery.value = "";
+					tagSuggest.innerHTML = "";
+					renderTags();
+					showToast(created.created ? "タグを作成しました" : "既存タグを追加しました");
+				} catch (err) {
+					showToast(`タグ作成に失敗: ${err.message}`);
+				}
+			});
+			tagSuggest.appendChild(create);
+		}
 	}, 120);
 	tagQuery.addEventListener("input", renderTagSuggest);
 
