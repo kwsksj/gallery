@@ -557,6 +557,71 @@ async function createTagFromUi(rawName) {
 	return { id, created: true };
 }
 
+function appendCreateTagSuggest(suggestRoot, query, onCreated) {
+	const q = trimText(query);
+	if (!q) return;
+	if (!state.tagsIndexLoaded) {
+		suggestRoot.appendChild(
+			el("div", { class: "suggest-item" }, [
+				el("span", { text: "タグインデックス未取得" }),
+				el("span", { class: "suggest-item__hint", text: "新規作成はできません" }),
+			]),
+		);
+		return;
+	}
+	if (findExistingTagIdByName(q)) return;
+	const create = el("div", { class: "suggest-item" }, [
+		el("span", { text: `「${q}」を新規作成` }),
+		el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
+	]);
+	let creating = false;
+	create.addEventListener("click", async () => {
+		if (creating) return;
+		creating = true;
+		try {
+			const result = await createTagFromUi(q);
+			const id = resolveMergedTagId(result.id);
+			showToast(result.created ? "タグを作成しました" : "既存タグを追加しました");
+			onCreated(id);
+		} catch (err) {
+			showToast(`タグ作成に失敗: ${err.message}`);
+		} finally {
+			creating = false;
+		}
+	});
+	suggestRoot.appendChild(create);
+}
+
+function renderTitleTagSuggest(root, { getTitle, getExplicitTagIds, onTagAdded }) {
+	root.innerHTML = "";
+	const title = trimText(getTitle());
+	if (!title || !state.tagsIndexLoaded) return;
+
+	const existingId = findExistingTagIdByName(title);
+	const resolvedId = existingId ? resolveMergedTagId(existingId) : "";
+	if (resolvedId && getExplicitTagIds().includes(resolvedId)) return;
+
+	root.appendChild(el("span", { class: "subnote", text: "作品名→タグ：" }));
+	const chip = el("span", { class: "chip" });
+	chip.appendChild(el("span", { text: title }));
+	let adding = false;
+	chip.addEventListener("click", async () => {
+		if (adding) return;
+		adding = true;
+		try {
+			const result = await createTagFromUi(title);
+			const id = resolveMergedTagId(result.id);
+			showToast(result.created ? "タグを作成しました" : "既存タグを追加しました");
+			onTagAdded(id);
+		} catch (err) {
+			showToast(`タグ追加に失敗: ${err.message}`);
+		} finally {
+			adding = false;
+		}
+	});
+	root.appendChild(chip);
+}
+
 function searchTags(query) {
 	const q = normalizeSearch(query);
 	if (!q) return [];
@@ -1042,6 +1107,17 @@ function initTagInput(prefix) {
 	const derivedNote = qs(`#${prefix}-tag-derived-note`);
 	const childSuggestRoot = qs(`#${prefix}-tag-children`);
 
+	const titleTagRoot = el("div", { class: "chips" });
+	childSuggestRoot.after(titleTagRoot);
+
+	const refreshTitleTag = () => {
+		renderTitleTagSuggest(titleTagRoot, {
+			getTitle: () => qs("#upload-title")?.value || "",
+			getExplicitTagIds: () => state.upload.explicitTagIds,
+			onTagAdded: (id) => setState(Array.from(new Set([...state.upload.explicitTagIds, id]))),
+		});
+	};
+
 	const setState = (explicitIds) => {
 		state.upload.explicitTagIds = explicitIds;
 		const derivedIds = computeDerivedParentTagIds(explicitIds);
@@ -1054,6 +1130,7 @@ function initTagInput(prefix) {
 		});
 		derivedNote.textContent = derivedIds.length > 0 ? `自動付与（親タグ）: ${derivedIds.length}件` : "";
 		renderChildSuggest(childSuggestRoot, { explicitIds, derivedIds, onAdd: (id) => setState(Array.from(new Set([...explicitIds, id]))) });
+		refreshTitleTag();
 		if (!state.upload.readyTouched) {
 			const readyCb = qs("#upload-ready");
 			if (readyCb) readyCb.checked = computeUploadReadyDefault();
@@ -1084,36 +1161,12 @@ function initTagInput(prefix) {
 
 		const q = String(query || "").trim();
 		if (q && list.length < 6) {
-			if (!state.tagsIndexLoaded) {
-				suggestRoot.appendChild(
-					el("div", { class: "suggest-item" }, [
-						el("span", { text: "タグインデックス未取得" }),
-						el("span", { class: "suggest-item__hint", text: "新規作成はできません" }),
-					]),
-				);
-				return;
-			}
-			const existingId = findExistingTagIdByName(q);
-			if (!existingId) {
-				const create = el("div", { class: "suggest-item" }, [
-					el("span", { text: `「${q}」を新規作成` }),
-					el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
-				]);
-				create.addEventListener("click", async () => {
-					try {
-						const created = await createTagFromUi(q);
-						showToast(created.created ? "タグを作成しました" : "既存タグを追加しました");
-						const resolvedId = resolveMergedTagId(created.id);
-						const next = Array.from(new Set([...state.upload.explicitTagIds, resolvedId]));
-						setState(next);
-						queryEl.value = "";
-						suggestRoot.innerHTML = "";
-					} catch (err) {
-						showToast(`タグ作成に失敗: ${err.message}`);
-					}
-				});
-				suggestRoot.appendChild(create);
-			}
+			appendCreateTagSuggest(suggestRoot, q, (id) => {
+				const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
+				setState(next);
+				queryEl.value = "";
+				suggestRoot.innerHTML = "";
+			});
 		}
 	};
 
@@ -1125,6 +1178,9 @@ function initTagInput(prefix) {
 	document.addEventListener("click", () => {
 		suggestRoot.innerHTML = "";
 	});
+
+	const titleEl = qs("#upload-title");
+	if (titleEl) titleEl.addEventListener("input", debounce(refreshTitleTag, 200));
 
 	setState([]);
 }
@@ -1476,7 +1532,19 @@ function renderWorkModal(work, index) {
 	const tagChips = el("div", { class: "chips" });
 	const derivedNote = el("div", { class: "subnote" });
 	const childSuggest = el("div", { class: "chips" });
+	const titleTagRoot = el("div", { class: "chips" });
 	let explicitTagIds = Array.isArray(work.tagIds) ? [...work.tagIds] : [];
+
+	const refreshTitleTag = () => {
+		renderTitleTagSuggest(titleTagRoot, {
+			getTitle: () => titleInput.value || "",
+			getExplicitTagIds: () => explicitTagIds,
+			onTagAdded: (id) => {
+				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
+				renderTags();
+			},
+		});
+	};
 
 	const renderTags = () => {
 		const derived = computeDerivedParentTagIds(explicitTagIds);
@@ -1493,6 +1561,7 @@ function renderWorkModal(work, index) {
 			explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
 			renderTags();
 		}});
+		refreshTitleTag();
 	};
 	renderTags();
 
@@ -1512,37 +1581,17 @@ function renderWorkModal(work, index) {
 			tagSuggest.appendChild(item);
 		});
 
-		if (q && list.length < 6 && !findExistingTagIdByName(q)) {
-			if (!state.tagsIndexLoaded) {
-				tagSuggest.appendChild(
-					el("div", { class: "suggest-item" }, [
-						el("span", { text: "タグインデックス未取得" }),
-						el("span", { class: "suggest-item__hint", text: "新規作成はできません" }),
-					]),
-				);
-				return;
-			}
-			const create = el("div", { class: "suggest-item" }, [
-				el("span", { text: `「${q}」を新規作成` }),
-				el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
-			]);
-			create.addEventListener("click", async () => {
-				try {
-					const created = await createTagFromUi(q);
-					const id = resolveMergedTagId(created.id);
-					explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
-					tagQuery.value = "";
-					tagSuggest.innerHTML = "";
-					renderTags();
-					showToast(created.created ? "タグを作成しました" : "既存タグを追加しました");
-				} catch (err) {
-					showToast(`タグ作成に失敗: ${err.message}`);
-				}
+		if (q && list.length < 6) {
+			appendCreateTagSuggest(tagSuggest, q, (id) => {
+				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
+				tagQuery.value = "";
+				tagSuggest.innerHTML = "";
+				renderTags();
 			});
-			tagSuggest.appendChild(create);
 		}
 	}, 120);
 	tagQuery.addEventListener("input", renderTagSuggest);
+	titleInput.addEventListener("input", debounce(refreshTitleTag, 200));
 
 	const viewerWrap = el("div", { class: "image-viewer" });
 
@@ -1736,7 +1785,7 @@ function renderWorkModal(work, index) {
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest]),
+		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [
 			el("label", { class: "checkbox" }, [
