@@ -28,6 +28,17 @@
 					</nav>
 				</div>
 				<div class="app-header__right">
+					<div class="inline-controls admin-auth-controls" aria-label="管理API認証">
+						<input
+							id="admin-api-token"
+							class="input input--sm"
+							type="password"
+							placeholder="管理APIトークン"
+							autocomplete="off"
+						/>
+						<button id="admin-api-token-save" class="btn" type="button">認証</button>
+						<button id="admin-api-token-clear" class="btn" type="button">解除</button>
+					</div>
 					<div class="header-meta">
 						<span class="header-meta__label">gallery.json</span>
 						<span id="gallery-updated-at" class="header-meta__value">-</span>
@@ -216,6 +227,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260207-2"></script>
+		<script type="module" src="./admin/admin.js?v=20260208-1"></script>
 	</body>
 </html>

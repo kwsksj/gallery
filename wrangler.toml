@@ -52,6 +52,8 @@ STUDENTS_INDEX_KEY = "students_index.json"
 TAGS_INDEX_KEY = "tags_index.json"
 # participants_index push受信用のBearerは secret で設定:
 #   npx wrangler secret put UPLOAD_UI_PARTICIPANTS_INDEX_PUSH_TOKEN
+# 管理API保護用のBearerは secret で設定:
+#   npx wrangler secret put ADMIN_API_TOKEN
 
 # GitHub Actions（ギャラリー更新トリガー用）
 GITHUB_REPO = "kwsksj/auto-post"

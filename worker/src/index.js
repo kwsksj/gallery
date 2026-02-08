@@ -101,6 +101,20 @@ function getBearerToken(request) {
   return match ? asString(match[1]).trim() : "";
 }
 
+function requireAdminAuthorization(request, env) {
+  const expectedToken = getEnvString(env, "ADMIN_API_TOKEN");
+  if (!expectedToken) {
+    return serverError("ADMIN_API_TOKEN not configured");
+  }
+
+  const actualToken = getBearerToken(request);
+  if (!actualToken || actualToken !== expectedToken) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  return null;
+}
+
 function getWorksProps(env) {
   return {
     title: getEnvString(env, "NOTION_WORKS_TITLE_PROP", "作品名"),
@@ -1165,6 +1179,11 @@ export default {
 
     if (pathname === "/tags-index" && request.method === "GET") {
       return handleProxyJson(env, "TAGS_INDEX_URL", "TAGS_INDEX_KEY", "tags_index.json");
+    }
+
+    if (pathname.startsWith("/admin/")) {
+      const authError = requireAdminAuthorization(request, env);
+      if (authError) return authError;
     }
 
     if (pathname === "/admin/notion/schema" && request.method === "GET") {

@@ -1,5 +1,7 @@
 import { debounce, el, formatIso, normalizeSearch, qs, qsa, showToast } from "../shared/gallery-core.js";
 
+const ADMIN_API_TOKEN_STORAGE_KEY = "gallery.adminApiToken.v1";
+
 const state = {
 	config: null,
 	schema: null,
@@ -23,14 +25,105 @@ const state = {
 	},
 };
 
+function readStoredAdminToken() {
+	try {
+		return trimText(window.localStorage.getItem(ADMIN_API_TOKEN_STORAGE_KEY));
+	} catch {
+		return "";
+	}
+}
+
+function storeAdminToken(token) {
+	const value = trimText(token);
+	if (!value) return;
+	try {
+		window.localStorage.setItem(ADMIN_API_TOKEN_STORAGE_KEY, value);
+	} catch {}
+}
+
+function clearStoredAdminToken() {
+	try {
+		window.localStorage.removeItem(ADMIN_API_TOKEN_STORAGE_KEY);
+	} catch {}
+}
+
+function getConfiguredAdminToken() {
+	const tokenFromWindow = trimText(window.ADMIN_API_TOKEN);
+	if (tokenFromWindow) {
+		storeAdminToken(tokenFromWindow);
+		return tokenFromWindow;
+	}
+	const tokenFromConfig = trimText(state.config?.adminApiToken);
+	if (tokenFromConfig) {
+		storeAdminToken(tokenFromConfig);
+		return tokenFromConfig;
+	}
+	const tokenFromInput = trimText(qs("#admin-api-token")?.value);
+	if (tokenFromInput) {
+		storeAdminToken(tokenFromInput);
+		return tokenFromInput;
+	}
+	return readStoredAdminToken();
+}
+
+function ensureAdminToken() {
+	const existing = getConfiguredAdminToken();
+	if (existing) return existing;
+	throw new Error("管理APIトークンを設定してください（ヘッダー右上）");
+}
+
+function isAdminPath(path) {
+	return String(path || "").startsWith("/admin/");
+}
+
+function reflectAdminTokenToInput() {
+	const input = qs("#admin-api-token");
+	if (!input) return;
+	input.value = getConfiguredAdminToken() || "";
+}
+
+function initAdminAuthControls() {
+	const input = qs("#admin-api-token");
+	const saveBtn = qs("#admin-api-token-save");
+	const clearBtn = qs("#admin-api-token-clear");
+	if (!input || !saveBtn || !clearBtn) return;
+
+	reflectAdminTokenToInput();
+
+	const saveToken = () => {
+		const token = trimText(input.value);
+		if (!token) {
+			showToast("管理APIトークンを入力してください");
+			return;
+		}
+		storeAdminToken(token);
+		showToast("管理APIトークンを保存しました。再読み込みします。");
+		window.setTimeout(() => window.location.reload(), 150);
+	};
+
+	saveBtn.addEventListener("click", saveToken);
+	input.addEventListener("keydown", (e) => {
+		if (e.key !== "Enter") return;
+		e.preventDefault();
+		saveToken();
+	});
+	clearBtn.addEventListener("click", () => {
+		clearStoredAdminToken();
+		input.value = "";
+		showToast("管理APIトークンを削除しました");
+	});
+}
+
 function getConfig() {
 	const app = qs("#app");
 	const apiBaseFromData = app?.dataset.apiBase || "";
 	const apiBase = String(window.ADMIN_API_BASE || apiBaseFromData || "").trim();
 	const galleryJsonUrl = String(window.GALLERY_JSON_URL || app?.dataset.galleryJson || "./gallery.json").trim();
+	const adminApiToken = String(window.ADMIN_API_TOKEN || app?.dataset.adminApiToken || "").trim();
 	return {
 		apiBase,
 		galleryJsonUrl,
+		adminApiToken,
 	};
 }
 
@@ -39,9 +132,24 @@ async function apiFetch(path, init = {}) {
 	const url = base ? new URL(path, base).toString() : path;
 	const requestOrigin = new URL(url, window.location.href).origin;
 	const credentials = requestOrigin === window.location.origin ? "include" : "omit";
-	const res = await fetch(url, { credentials, ...init });
+	const headers = new Headers(init.headers || {});
+	const needsAdminAuth = isAdminPath(path);
+	if (needsAdminAuth) {
+		const token = ensureAdminToken();
+		headers.set("Authorization", `Bearer ${token}`);
+	}
+	const res = await fetch(url, { credentials, ...init, headers });
 	const data = await res.json().catch(() => null);
 	if (!res.ok) {
+		if (needsAdminAuth && res.status === 401) {
+			clearStoredAdminToken();
+			const input = qs("#admin-api-token");
+			if (input) {
+				input.value = "";
+				input.focus();
+			}
+			throw new Error("認証に失敗しました。管理APIトークンを再入力してください（ヘッダー右上）");
+		}
 		const message = data?.error || data?.message || `HTTP ${res.status}`;
 		throw new Error(message);
 	}
@@ -1601,6 +1709,7 @@ function initToolsActions() {
 
 async function init() {
 	state.config = getConfig();
+	initAdminAuthControls();
 	initTabs();
 	initHeaderActions();
 	await loadGalleryUpdatedAt();
