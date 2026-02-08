@@ -105,12 +105,34 @@ function timingSafeEqual(a, b) {
   const encoder = new TextEncoder();
   const aBuf = encoder.encode(a);
   const bBuf = encoder.encode(b);
-  if (aBuf.byteLength !== bBuf.byteLength) {
-    // Compare against self to keep constant time, then return false
-    crypto.subtle.timingSafeEqual(aBuf, aBuf);
-    return false;
+
+  // Cloudflare Workers: crypto.subtle.timingSafeEqual
+  // Node.js (Wrangler/Miniflare): require("node:crypto").timingSafeEqual
+  if (typeof crypto !== "undefined" && crypto.subtle && typeof crypto.subtle.timingSafeEqual === "function") {
+    if (aBuf.byteLength !== bBuf.byteLength) {
+      crypto.subtle.timingSafeEqual(bBuf, bBuf);
+      return false;
+    }
+    return crypto.subtle.timingSafeEqual(aBuf, bBuf);
   }
-  return crypto.subtle.timingSafeEqual(aBuf, bBuf);
+
+  // Fallback for Node.js environments (Wrangler local dev / Miniflare)
+  try {
+    const nodeCrypto = require("node:crypto");
+    if (aBuf.byteLength !== bBuf.byteLength) {
+      nodeCrypto.timingSafeEqual(bBuf, bBuf);
+      return false;
+    }
+    return nodeCrypto.timingSafeEqual(aBuf, bBuf);
+  } catch {
+    // Last resort: constant-time comparison via bitwise OR
+    if (aBuf.byteLength !== bBuf.byteLength) return false;
+    let result = 0;
+    for (let i = 0; i < aBuf.byteLength; i++) {
+      result |= aBuf[i] ^ bBuf[i];
+    }
+    return result === 0;
+  }
 }
 
 function requireAdminAuthorization(request, env) {
