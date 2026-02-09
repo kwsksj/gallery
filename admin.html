@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>先生専用アップロード</title>
 		<link rel="stylesheet" href="./shared/gallery-core.css" />
-		<link rel="stylesheet" href="./admin/admin.css?v=20260208-3" />
+		<link rel="stylesheet" href="./admin/admin.css?v=20260209-1" />
 	</head>
 	<body>
 		<div
@@ -177,7 +177,7 @@
 				</section>
 
 				<section id="view-curation" class="view" data-view="curation">
-					<h2 class="view-title">整備モード（未整備キュー）</h2>
+					<h2 class="view-title">整備モード（作品キュー）</h2>
 
 					<div class="panel">
 						<div class="toolbar">
@@ -198,6 +198,14 @@
 								教室
 								<select id="curation-classroom" class="input input--sm"></select>
 							</label>
+							<label class="label-inline">
+								整備状態
+								<select id="curation-ready-filter" class="input input--sm">
+									<option value="all">すべて</option>
+									<option value="unprepared">未整備のみ</option>
+									<option value="ready">整備済みのみ</option>
+								</select>
+							</label>
 							<label class="checkbox checkbox--sm">
 								<input id="curation-missing-title" type="checkbox" />
 								<span>作品名なし</span>
@@ -213,17 +221,23 @@
 						</div>
 					</div>
 
-					<div id="curation-grid" class="card-grid" aria-label="未整備作品一覧"></div>
+					<div id="curation-grid" class="card-grid" aria-label="作品一覧"></div>
 				</section>
 
 				<section id="view-tools" class="view" data-view="tools">
 					<h2 class="view-title">ツール</h2>
 					<div class="panel">
-						<div class="help">
-							タグ一括再計算（dry-run / apply）はCLI想定です（仕様書の通り）。
+						<div class="toolbar">
+							<div>
+								<div class="label">タグ親子関係の作品反映</div>
+								<div id="tools-tags-recalc-status" class="status">-</div>
+							</div>
+							<button id="trigger-tags-recalc-apply" class="btn btn--primary" type="button">
+								タグ親子関係を作品へ反映
+							</button>
 						</div>
-						<div class="help">
-							`node scripts/tag-recalc.mjs --dry-run`（適宜 `--apply`）を使用してください。
+						<div class="subnote">
+							タグDBの親子関係・統合（merged）を基準に、既存作品タグを再計算してNotionへ反映します。
 						</div>
 					</div>
 					<div class="panel">
@@ -247,6 +261,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260208-3"></script>
+		<script type="module" src="./admin/admin.js?v=20260209-1"></script>
 	</body>
 </html>
