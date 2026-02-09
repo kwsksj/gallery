@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>先生専用アップロード</title>
 		<link rel="stylesheet" href="./shared/gallery-core.css" />
-		<link rel="stylesheet" href="./admin/admin.css?v=20260209-4" />
+		<link rel="stylesheet" href="./admin/admin.css?v=20260209-6" />
 	</head>
 	<body>
 		<div
@@ -120,17 +120,20 @@
 
 						<div class="form-grid">
 							<div class="form-row">
-								<label class="label" for="upload-author">作者</label>
-								<select id="upload-author" class="input" multiple size="6"></select>
+								<div class="label">作者</div>
+								<select id="upload-author" class="input author-select-native" multiple size="6" hidden aria-hidden="true"></select>
 								<div class="subnote">
-									複数選択可（同日参加者候補＋名簿検索）。表示は「ニックネーム｜本名」。
+									候補ボタン + 名簿検索で複数選択できます。表示は「ニックネーム｜本名」です。
 								</div>
-								<div id="upload-author-candidate-notes" class="candidate-notes" hidden></div>
-							</div>
-							<div class="form-row">
-								<label class="label" for="upload-author-search">名簿検索</label>
-								<input id="upload-author-search" class="input" type="text" placeholder="例：けい" />
-								<div id="upload-author-search-results" class="suggest"></div>
+								<div class="author-picker">
+									<div id="upload-author-selected" class="chips" aria-label="選択中の作者" hidden></div>
+									<div id="upload-author-candidate-notes" class="candidate-notes" hidden></div>
+									<div class="author-picker__search">
+										<div class="subnote">名簿検索</div>
+										<input id="upload-author-search" class="input" type="text" placeholder="例：けい" aria-label="作者を名簿検索" />
+										<div id="upload-author-search-results" class="suggest"></div>
+									</div>
+								</div>
 							</div>
 						</div>
 
@@ -231,7 +234,7 @@
 						<div class="label">タグ管理（タグDB）</div>
 						<div id="tools-tag-relation-editor"></div>
 						<div class="subnote">
-							タグの新規作成、親子関係付き作成、既存タグ同士の親子関係追加ができます。
+							親/子の検索候補からタグを新規作成し、既存タグ同士の親子関係を追加できます。
 						</div>
 					</div>
 					<div class="panel">
@@ -269,6 +272,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260209-4"></script>
+		<script type="module" src="./admin/admin.js?v=20260209-6"></script>
 	</body>
 </html>

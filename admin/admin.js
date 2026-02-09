@@ -2,6 +2,7 @@ import { debounce, el, formatIso, normalizeSearch, qs, qsa, showToast } from "..
 
 const ADMIN_API_TOKEN_STORAGE_KEY = "gallery.adminApiToken.v1";
 const COMPACT_HEADER_MEDIA_QUERY = "(max-width: 760px)";
+const JST_TIME_ZONE = "Asia/Tokyo";
 
 const state = {
 	config: null,
@@ -20,6 +21,8 @@ const state = {
 		coverIndex: 0,
 		explicitTagIds: [],
 		readyTouched: false,
+		authorCandidates: [],
+		resetTagState: null,
 	},
 	curation: {
 		works: [],
@@ -841,7 +844,7 @@ function renderPickedTagChip(root, { id, roleLabel, onClear }) {
 	root.appendChild(chip);
 }
 
-function bindTagPickerInput({ inputEl, suggestRoot, onPick }) {
+function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = () => [], onCreated = null }) {
 	const renderSuggest = () => {
 		const q = trimText(inputEl.value);
 		suggestRoot.innerHTML = "";
@@ -862,6 +865,22 @@ function bindTagPickerInput({ inputEl, suggestRoot, onPick }) {
 			});
 			suggestRoot.appendChild(item);
 		});
+
+		if (list.length < 6) {
+			appendCreateTagSuggest(
+				suggestRoot,
+				q,
+				(createdId) => {
+					const resolvedId = resolveMergedTagId(createdId);
+					if (!resolvedId) return;
+					onCreated?.(resolvedId);
+					onPick(resolvedId);
+					inputEl.value = state.tagsById.get(resolvedId)?.name || q;
+					suggestRoot.innerHTML = "";
+				},
+				{ relatedTagIds: getRelatedTagIds() },
+			);
+		}
 	};
 
 	inputEl.addEventListener("input", debounce(renderSuggest, 120));
@@ -918,6 +937,7 @@ function createTagRelationEditor({ onTagAdded }) {
 			parentTagId = id;
 			refreshPicked();
 		},
+		onCreated: (id) => onTagAdded?.(id),
 	});
 	bindTagPickerInput({
 		inputEl: childInput,
@@ -926,6 +946,7 @@ function createTagRelationEditor({ onTagAdded }) {
 			childTagId = id;
 			refreshPicked();
 		},
+		onCreated: (id) => onTagAdded?.(id),
 	});
 
 	const addRelationBtn = el("button", { type: "button", class: "btn", text: "既存タグに親子関係を追加" });
@@ -941,31 +962,6 @@ function createTagRelationEditor({ onTagAdded }) {
 		}
 	});
 
-	const createInput = el("input", { class: "input input--sm", type: "text", placeholder: "新規タグ名" });
-	const createBtn = el("button", { type: "button", class: "btn", text: "新規作成（上記親子を設定）" });
-	createBtn.addEventListener("click", async () => {
-		const name = trimText(createInput.value);
-		if (!name) {
-			showToast("新規タグ名を入力してください");
-			return;
-		}
-		createBtn.disabled = true;
-		try {
-			const result = await createTagFromUi(name, {
-				parentIds: parentTagId ? [parentTagId] : [],
-				childIds: childTagId ? [childTagId] : [],
-			});
-			const resolvedId = resolveMergedTagId(result.id);
-			if (resolvedId) onTagAdded?.(resolvedId);
-			showToast(result.created ? "タグを作成しました" : "既存タグに親子関係を追加しました");
-			createInput.value = "";
-		} catch (err) {
-			showToast(`タグ作成に失敗: ${err.message}`);
-		} finally {
-			createBtn.disabled = false;
-		}
-	});
-
 	root.appendChild(
 		el("div", { class: "tag-relation-editor__grid" }, [
 			el("div", { class: "form-row" }, [el("label", { class: "label", text: "親タグ" }), parentPicker, parentPicked]),
@@ -974,15 +970,9 @@ function createTagRelationEditor({ onTagAdded }) {
 	);
 	root.appendChild(el("div", { class: "tag-relation-editor__actions" }, [addRelationBtn]));
 	root.appendChild(
-		el("div", { class: "tag-relation-editor__actions" }, [
-			createInput,
-			createBtn,
-		]),
-	);
-	root.appendChild(
 		el("div", {
 			class: "subnote",
-			text: "親/子を選んで「既存タグに親子関係を追加」、または新規タグ名を入力して「新規作成（上記親子を設定）」を実行できます。",
+			text: "親/子の検索候補から新規タグを作成できます。作成後に「既存タグに親子関係を追加」で反映してください。",
 		}),
 	);
 	return root;
@@ -1150,28 +1140,187 @@ function buildAuthorCandidateFromParticipant(participant, { group = null } = {})
 	};
 }
 
-function renderAuthorCandidateNotes(root, candidates) {
-	if (!root) return;
+function formatCandidateNoteText(value) {
+	const note = trimText(value);
+	return note || "（セッションノート未記入）";
+}
+
+function dispatchAuthorSelectionChange(selectEl) {
+	if (!selectEl) return;
+	selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function getAuthorOptionLabel(selectEl, authorId) {
+	const id = trimText(authorId);
+	if (!id) return "";
+	const option = Array.from(selectEl?.options || []).find((opt) => trimText(opt.value) === id);
+	const optionLabel = trimText(option?.textContent);
+	if (optionLabel) return optionLabel;
+	const record = getStudentRecordByAnyId(id);
+	return trimText(record?.choiceLabel || record?.displayName || id);
+}
+
+function renderAuthorSelectedChips(root, selectEl) {
+	const authorSelect = selectEl;
+	if (!root || !authorSelect) return;
 	root.innerHTML = "";
-	const notes = (Array.isArray(candidates) ? candidates : [])
-		.map((candidate) => ({
-			label: trimText(candidate?.label),
-			note: trimText(candidate?.sessionNote),
-		}))
-		.filter((entry) => entry.label && entry.note);
-	if (notes.length === 0) {
+	const selectedIds = getSelectedAuthorIds(authorSelect);
+	if (selectedIds.length === 0) {
 		root.hidden = true;
 		return;
 	}
 	root.hidden = false;
-	root.appendChild(el("div", { class: "subnote", text: "予約記録のセッションノート" }));
-	notes.forEach((entry) => {
-		root.appendChild(
-			el("div", { class: "candidate-note" }, [
-				el("div", { class: "candidate-note__name", text: entry.label }),
-				el("div", { class: "candidate-note__text", text: entry.note }),
-			]),
-		);
+	selectedIds.forEach((authorId) => {
+		const chip = el("span", { class: "chip chip--author-selected" });
+		chip.appendChild(el("span", { text: getAuthorOptionLabel(authorSelect, authorId) || authorId }));
+		const remove = el("button", { type: "button", text: "×", "aria-label": "作者選択を解除" });
+		remove.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const selected = new Set(getSelectedAuthorIds(authorSelect));
+			selected.delete(authorId);
+			setSelectedAuthorIds(authorSelect, Array.from(selected));
+			dispatchAuthorSelectionChange(authorSelect);
+		});
+		chip.appendChild(remove);
+		root.appendChild(chip);
+	});
+}
+
+function renderAuthorCandidateButtons(root, selectEl, candidates, { emptyText = "" } = {}) {
+	const authorSelect = selectEl;
+	if (!root || !authorSelect) return;
+	root.innerHTML = "";
+	const list = Array.isArray(candidates) ? candidates : [];
+	if (list.length === 0) {
+		if (emptyText) {
+			root.hidden = false;
+			root.appendChild(el("div", { class: "subnote", text: emptyText }));
+		} else {
+			root.hidden = true;
+		}
+		return;
+	}
+	root.hidden = false;
+	root.appendChild(el("div", { class: "subnote", text: "候補ボタン（作者名 + セッションノート）" }));
+
+	const selectedIds = new Set(getSelectedAuthorIds(authorSelect));
+	list.forEach((candidate) => {
+		const candidateId = trimText(candidate?.id);
+		const label = trimText(candidate?.label);
+		if (!candidateId || !label) return;
+		const button = el("button", {
+			type: "button",
+			class: `candidate-note candidate-note--button${selectedIds.has(candidateId) ? " is-selected" : ""}`,
+		});
+		button.appendChild(el("div", { class: "candidate-note__name", text: label }));
+		button.appendChild(el("div", { class: "candidate-note__text", text: formatCandidateNoteText(candidate?.sessionNote) }));
+		button.addEventListener("click", () => {
+			const selected = new Set(getSelectedAuthorIds(authorSelect));
+			if (selected.has(candidateId)) {
+				selected.delete(candidateId);
+			} else {
+				ensureAuthorOption(authorSelect, buildStudentRecord({ id: candidateId, display_name: label }));
+				selected.add(candidateId);
+			}
+			setSelectedAuthorIds(authorSelect, Array.from(selected));
+			dispatchAuthorSelectionChange(authorSelect);
+		});
+		root.appendChild(button);
+	});
+
+}
+
+function syncAuthorPickerUi({
+	selectEl,
+	selectedRoot,
+	candidatesRoot,
+	candidates,
+	emptyCandidatesText = "当日参加者候補なし（名簿検索をご利用ください）",
+} = {}) {
+	renderAuthorSelectedChips(selectedRoot, selectEl);
+	renderAuthorCandidateButtons(candidatesRoot, selectEl, candidates, { emptyText: emptyCandidatesText });
+}
+
+function syncUploadAuthorUi() {
+	syncAuthorPickerUi({
+		selectEl: qs("#upload-author"),
+		selectedRoot: qs("#upload-author-selected"),
+		candidatesRoot: qs("#upload-author-candidate-notes"),
+		candidates: state.upload.authorCandidates,
+	});
+}
+
+function bindAuthorSearchInput({ inputEl, resultsRoot, selectEl, onPicked = null } = {}) {
+	if (!inputEl || !resultsRoot || !selectEl) return;
+
+	const render = (items) => {
+		resultsRoot.innerHTML = "";
+		items.slice(0, 12).forEach((student) => {
+			const item = el("div", { class: "suggest-item" }, [
+				el("span", { text: student.choiceLabel || student.displayName }),
+				el("span", { class: "suggest-item__hint", text: student.studentId ? `(${student.studentId})` : "" }),
+			]);
+			item.addEventListener("click", () => {
+				if (!student.notionId) return;
+				ensureAuthorOption(selectEl, student);
+				const selected = new Set(getSelectedAuthorIds(selectEl));
+				selected.add(student.notionId);
+				setSelectedAuthorIds(selectEl, Array.from(selected));
+				dispatchAuthorSelectionChange(selectEl);
+				onPicked?.();
+				resultsRoot.innerHTML = "";
+				inputEl.value = "";
+			});
+			resultsRoot.appendChild(item);
+		});
+	};
+
+	const run = debounce(() => {
+		(async () => {
+			const raw = inputEl.value.trim();
+			const q = normalizeSearch(raw);
+			if (!q) return render([]);
+
+			const hits = [];
+			const seen = new Set();
+			for (const student of [...state.studentsByNotionId.values(), ...state.studentsByStudentId.values()]) {
+				const keyId = student.notionId || student.studentId;
+				if (!keyId || seen.has(keyId)) continue;
+				seen.add(keyId);
+				const key = normalizeSearch([student.displayName, student.choiceLabel, student.studentId].filter(Boolean).join(" "));
+				if (key.includes(q)) hits.push(student);
+			}
+
+			if (hits.length < 8 && raw.length >= 2) {
+				try {
+					const remote = await apiFetch(`/admin/notion/search-students?q=${encodeURIComponent(raw)}`);
+					for (const r of remote.results || []) {
+						const record = buildStudentRecord({
+							id: trimText(r.id),
+							display_name: trimText(r.name),
+							nickname: trimText(r.nickname),
+							real_name: trimText(r.real_name),
+						});
+						const notionId = record.notionId;
+						if (!notionId || !record.displayName || seen.has(notionId)) continue;
+						seen.add(notionId);
+						hits.push(record);
+					}
+				} catch {
+					// noop
+				}
+			}
+
+			render(hits);
+		})().catch(() => {});
+	}, 200);
+
+	inputEl.addEventListener("input", run);
+	inputEl.addEventListener("blur", () => {
+		window.setTimeout(() => {
+			resultsRoot.innerHTML = "";
+		}, 120);
 	});
 }
 
@@ -1216,7 +1365,56 @@ function renderUploadPreviews() {
 	});
 }
 
-function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
+function formatDateYmdInJst(date) {
+	if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: JST_TIME_ZONE,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(date);
+	const byType = new Map(parts.map((part) => [part.type, part.value]));
+	const year = trimText(byType.get("year"));
+	const month = trimText(byType.get("month"));
+	const day = trimText(byType.get("day"));
+	if (!year || !month || !day) return "";
+	return `${year}-${month}-${day}`;
+}
+
+function parseExifDateTimeParts(value) {
+	const m = trimText(value).match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+	if (!m) return null;
+	const year = Number(m[1]);
+	const month = Number(m[2]);
+	const day = Number(m[3]);
+	const hour = Number(m[4]);
+	const minute = Number(m[5]);
+	const second = Number(m[6]);
+	if ([year, month, day, hour, minute, second].some((n) => !Number.isFinite(n))) return null;
+	return { year, month, day, hour, minute, second };
+}
+
+function parseExifOffsetMinutes(value) {
+	const m = trimText(value).match(/^([+-])(\d{2}):?(\d{2})$/);
+	if (!m) return null;
+	const sign = m[1] === "-" ? -1 : 1;
+	const hours = Number(m[2]);
+	const minutes = Number(m[3]);
+	if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+	return sign * (hours * 60 + minutes);
+}
+
+function toJstYmdFromExif(dateTimeValue, offsetValue = "") {
+	const parts = parseExifDateTimeParts(dateTimeValue);
+	if (!parts) return "";
+	const exifDate = `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+	const offsetMinutes = parseExifOffsetMinutes(offsetValue);
+	if (offsetMinutes === null) return exifDate;
+	const utcMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - offsetMinutes * 60 * 1000;
+	return formatDateYmdInJst(new Date(utcMs)) || exifDate;
+}
+
+function getExifDateInfoFromJpeg(arrayBuffer) {
 	const view = new DataView(arrayBuffer);
 	const getAscii = (offset, len) => {
 		let out = "";
@@ -1224,8 +1422,8 @@ function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
 		return out;
 	};
 
-	if (view.byteLength < 4) return "";
-	if (view.getUint16(0) !== 0xffd8) return "";
+	if (view.byteLength < 4) return null;
+	if (view.getUint16(0) !== 0xffd8) return null;
 
 	let offset = 2;
 	while (offset + 4 < view.byteLength) {
@@ -1246,27 +1444,12 @@ function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
 				const readU16 = (o) => (little ? view.getUint16(o, true) : view.getUint16(o, false));
 				const readU32 = (o) => (little ? view.getUint32(o, true) : view.getUint32(o, false));
 
-				if (readU16(tiffStart + 2) !== 42) return "";
+				if (readU16(tiffStart + 2) !== 42) return null;
 				const ifd0Offset = readU32(tiffStart + 4);
 				let ifdOffset = tiffStart + ifd0Offset;
-				if (ifdOffset + 2 > view.byteLength) return "";
+				if (ifdOffset + 2 > view.byteLength) return null;
 				const entries = readU16(ifdOffset);
 				ifdOffset += 2;
-
-				let exifIfdPtr = 0;
-				for (let i = 0; i < entries; i += 1) {
-					const entryOffset = ifdOffset + i * 12;
-					const tag = readU16(entryOffset);
-					if (tag === 0x8769) {
-						exifIfdPtr = readU32(entryOffset + 8);
-						break;
-					}
-				}
-				if (!exifIfdPtr) return "";
-				const exifIfdOffset = tiffStart + exifIfdPtr;
-				if (exifIfdOffset + 2 > view.byteLength) return "";
-				const exifEntries = readU16(exifIfdOffset);
-				let exifBase = exifIfdOffset + 2;
 
 				const readAsciiValue = (entryOffset) => {
 					const type = readU16(entryOffset + 2);
@@ -1278,30 +1461,38 @@ function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
 					return getAscii(dataOffset, count - 1);
 				};
 
-				let dateTimeOriginal = "";
-				for (let i = 0; i < exifEntries; i += 1) {
-					const entryOffset = exifBase + i * 12;
+				let exifIfdPtr = 0;
+				let dateTime = "";
+				for (let i = 0; i < entries; i += 1) {
+					const entryOffset = ifdOffset + i * 12;
 					const tag = readU16(entryOffset);
-					if (tag === 0x9003) {
-						dateTimeOriginal = readAsciiValue(entryOffset);
-						break;
+					if (tag === 0x8769) {
+						exifIfdPtr = readU32(entryOffset + 8);
 					}
+					if (tag === 0x0132) dateTime = readAsciiValue(entryOffset);
 				}
-				if (dateTimeOriginal) return dateTimeOriginal;
 
-				for (let i = 0; i < exifEntries; i += 1) {
-					const entryOffset = exifBase + i * 12;
-					const tag = readU16(entryOffset);
-					if (tag === 0x0132) {
-						return readAsciiValue(entryOffset);
+				let offsetText = "";
+				if (exifIfdPtr) {
+					const exifIfdOffset = tiffStart + exifIfdPtr;
+					if (exifIfdOffset + 2 > view.byteLength) return null;
+					const exifEntries = readU16(exifIfdOffset);
+					const exifBase = exifIfdOffset + 2;
+					for (let i = 0; i < exifEntries; i += 1) {
+						const entryOffset = exifBase + i * 12;
+						const tag = readU16(entryOffset);
+						if (tag === 0x9003) dateTime = readAsciiValue(entryOffset) || dateTime;
+						if (tag === 0x9011) offsetText = readAsciiValue(entryOffset) || offsetText;
+						if (tag === 0x9010) offsetText = readAsciiValue(entryOffset) || offsetText;
 					}
 				}
+				if (dateTime) return { dateTime, offsetText };
 			}
 		}
 
 		offset += size;
 	}
-	return "";
+	return null;
 }
 
 async function inferCompletedDateFromFiles(files) {
@@ -1311,11 +1502,18 @@ async function inferCompletedDateFromFiles(files) {
 	const first = files[0];
 	try {
 		const head = await first.slice(0, 256 * 1024).arrayBuffer();
-		const exif = getExifDateTimeOriginalFromJpeg(head);
-		if (exif) {
-			const ymd = exif.slice(0, 10).replaceAll(":", "-");
-			if (note) note.textContent = `EXIF DateTimeOriginal: ${exif}`;
-			return ymd;
+		const exif = getExifDateInfoFromJpeg(head);
+		if (exif?.dateTime) {
+			const ymd = toJstYmdFromExif(exif.dateTime, exif.offsetText);
+			if (note) {
+				const offset = trimText(exif.offsetText);
+				const extra = offset ? ` / Offset: ${offset}` : "";
+				note.textContent = `EXIF: ${exif.dateTime}${extra} -> JST日付 ${ymd || "-"}`;
+			}
+			if (ymd) return ymd;
+		}
+		if (note && exif) {
+			note.textContent = "EXIF日時は見つかりましたが形式を解釈できませんでした。";
 		}
 	} catch {
 		// noop
@@ -1323,8 +1521,8 @@ async function inferCompletedDateFromFiles(files) {
 
 	const fallback = first.lastModified ? new Date(first.lastModified) : null;
 	if (fallback && !Number.isNaN(fallback.getTime())) {
-		const ymd = fallback.toISOString().slice(0, 10);
-		if (note) note.textContent = `EXIFなしのため lastModified から推定: ${ymd}`;
+		const ymd = formatDateYmdInJst(fallback);
+		if (note) note.textContent = `EXIFなしのため lastModified からJST推定: ${ymd || "-"}`;
 		return ymd;
 	}
 
@@ -1338,7 +1536,6 @@ function updateUploadGroupAndAuthorCandidates() {
 
 	const groupSelect = qs("#upload-group");
 	const authorSelect = qs("#upload-author");
-	const authorCandidateNotesRoot = qs("#upload-author-candidate-notes");
 
 	const groups = ymd ? getParticipantsGroups(ymd) : [];
 	populateSelect(groupSelect, {
@@ -1379,6 +1576,11 @@ function updateUploadGroupAndAuthorCandidates() {
 
 	const participants = Array.isArray(selectedGroup?.participants) ? selectedGroup.participants : [];
 	const selectedAuthorIds = getSelectedAuthorIds(authorSelect);
+	const selectedLabelsById = new Map(
+		Array.from(authorSelect.options || [])
+			.map((option) => [trimText(option.value), trimText(option.textContent)])
+			.filter(([id, label]) => id && label),
+	);
 	const candidates = participants
 		.map((participant) => buildAuthorCandidateFromParticipant(participant, { group: selectedGroup }))
 		.filter(Boolean);
@@ -1391,10 +1593,53 @@ function updateUploadGroupAndAuthorCandidates() {
 	options.forEach((o) => authorSelect.appendChild(el("option", { value: o.value, text: o.label })));
 	for (const selectedId of selectedAuthorIds) {
 		const record = getStudentRecordByAnyId(selectedId);
-		if (record) ensureAuthorOption(authorSelect, record);
+		if (record) {
+			ensureAuthorOption(authorSelect, record);
+			continue;
+		}
+		const fallbackLabel = selectedLabelsById.get(selectedId);
+		if (fallbackLabel) {
+			authorSelect.appendChild(el("option", { value: selectedId, text: fallbackLabel }));
+		}
 	}
 	setSelectedAuthorIds(authorSelect, selectedAuthorIds);
-	renderAuthorCandidateNotes(authorCandidateNotesRoot, candidates);
+	state.upload.authorCandidates = candidates;
+	syncUploadAuthorUi();
+}
+
+function clearUploadSelectedFiles() {
+	state.upload.files.forEach((entry) => {
+		if (entry?.previewUrl) URL.revokeObjectURL(entry.previewUrl);
+	});
+	state.upload.files = [];
+	state.upload.coverIndex = 0;
+	renderUploadPreviews();
+}
+
+function resetUploadFormForNextEntry(statusText = "登録完了。次の作品を登録できます。") {
+	const form = qs("#upload-form");
+	const filesInput = qs("#upload-files");
+	const status = qs("#upload-status");
+	const exifNote = qs("#upload-exif-note");
+	const authorSearch = qs("#upload-author-search");
+	const authorSearchResults = qs("#upload-author-search-results");
+
+	clearUploadSelectedFiles();
+	if (form) form.reset();
+	state.upload.explicitTagIds = [];
+	state.upload.readyTouched = false;
+	state.upload.authorCandidates = [];
+	if (typeof state.upload.resetTagState === "function") state.upload.resetTagState();
+
+	if (exifNote) exifNote.textContent = "";
+	if (authorSearch) authorSearch.value = "";
+	if (authorSearchResults) authorSearchResults.innerHTML = "";
+	if (filesInput) filesInput.value = "";
+
+	updateUploadGroupAndAuthorCandidates();
+
+	if (status) status.textContent = statusText;
+	if (filesInput) filesInput.focus();
 }
 
 function initUpload() {
@@ -1415,7 +1660,7 @@ function initUpload() {
 
 	const filesInput = qs("#upload-files");
 	filesInput.addEventListener("change", async () => {
-		state.upload.files.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+		clearUploadSelectedFiles();
 		state.upload.files = Array.from(filesInput.files || []).map((f) => ({
 			file: f,
 			previewUrl: URL.createObjectURL(f),
@@ -1425,7 +1670,7 @@ function initUpload() {
 
 		const ymd = await inferCompletedDateFromFiles(state.upload.files.map((x) => x.file));
 		const dateInput = qs("#upload-completed-date");
-		if (ymd && !dateInput.value) dateInput.value = ymd;
+		if (ymd) dateInput.value = ymd;
 		updateUploadGroupAndAuthorCandidates();
 	});
 
@@ -1445,7 +1690,11 @@ function initUpload() {
 	readyCb.addEventListener("change", () => {
 		state.upload.readyTouched = true;
 	});
-	qsa("#upload-title,#upload-author").forEach((elx) => elx.addEventListener("change", syncReady));
+	qs("#upload-title").addEventListener("change", syncReady);
+	qs("#upload-author").addEventListener("change", () => {
+		syncReady();
+		syncUploadAuthorUi();
+	});
 
 	const form = qs("#upload-form");
 	form.addEventListener("submit", async (e) => {
@@ -1457,71 +1706,11 @@ function initUpload() {
 }
 
 function initStudentSearch() {
-	const input = qs("#upload-author-search");
-	const resultsRoot = qs("#upload-author-search-results");
-	const authorSelect = qs("#upload-author");
-
-	const render = (items) => {
-		resultsRoot.innerHTML = "";
-		items.slice(0, 12).forEach((s) => {
-			const item = el("div", { class: "suggest-item" }, [
-				el("span", { text: s.choiceLabel || s.displayName }),
-				el("span", { class: "suggest-item__hint", text: s.studentId ? `(${s.studentId})` : "" }),
-			]);
-			item.addEventListener("click", () => {
-				if (!s.notionId) return;
-				ensureAuthorOption(authorSelect, s);
-				const selected = new Set(getSelectedAuthorIds(authorSelect));
-				selected.add(s.notionId);
-				setSelectedAuthorIds(authorSelect, Array.from(selected));
-				resultsRoot.innerHTML = "";
-				input.value = "";
-			});
-			resultsRoot.appendChild(item);
-		});
-	};
-
-	const run = debounce(() => {
-		(async () => {
-			const raw = input.value.trim();
-			const q = normalizeSearch(raw);
-			if (!q) return render([]);
-
-			const hits = [];
-			const seen = new Set();
-			for (const s of [...state.studentsByNotionId.values(), ...state.studentsByStudentId.values()]) {
-				const keyId = s.notionId || s.studentId;
-				if (!keyId || seen.has(keyId)) continue;
-				seen.add(keyId);
-				const key = normalizeSearch([s.displayName, s.choiceLabel, s.studentId].filter(Boolean).join(" "));
-				if (key.includes(q)) hits.push(s);
-			}
-
-			if (hits.length < 8 && raw.length >= 2) {
-				try {
-					const remote = await apiFetch(`/admin/notion/search-students?q=${encodeURIComponent(raw)}`);
-					for (const r of remote.results || []) {
-						const record = buildStudentRecord({
-							id: trimText(r.id),
-							display_name: trimText(r.name),
-							nickname: trimText(r.nickname),
-							real_name: trimText(r.real_name),
-						});
-						const notionId = record.notionId;
-						if (!notionId || !record.displayName || seen.has(notionId)) continue;
-						seen.add(notionId);
-						hits.push(record);
-					}
-				} catch {
-					// noop
-				}
-			}
-
-			render(hits);
-		})().catch(() => {});
-	}, 200);
-
-	input.addEventListener("input", run);
+	bindAuthorSearchInput({
+		inputEl: qs("#upload-author-search"),
+		resultsRoot: qs("#upload-author-search-results"),
+		selectEl: qs("#upload-author"),
+	});
 }
 
 function initTagInput(prefix) {
@@ -1620,7 +1809,12 @@ function initTagInput(prefix) {
 	const titleEl = qs("#upload-title");
 	if (titleEl) titleEl.addEventListener("input", debounce(refreshTitleTag, 200));
 
-	setState([]);
+	state.upload.resetTagState = () => {
+		queryEl.value = "";
+		suggestRoot.innerHTML = "";
+		setState([]);
+	};
+	state.upload.resetTagState();
 }
 
 function renderChildSuggest(root, { explicitIds, derivedIds, onAdd }) {
@@ -1746,7 +1940,7 @@ async function submitUpload() {
 			}
 		}
 
-		status.textContent = `完了（Notion: ${created.id}）`;
+		resetUploadFormForNextEntry(`登録完了（Notion: ${created.id}）。次の作品を登録できます。`);
 		showToast("登録しました");
 		return;
 	} catch (err) {
@@ -1959,38 +2153,42 @@ function renderWorkModal(work, index) {
 	const readyCb = el("input", { type: "checkbox" });
 	readyCb.checked = Boolean(work.ready);
 
-	const authorSelect = el("select", { class: "input" });
+	const authorSelect = el("select", { class: "input author-select-native", "aria-hidden": "true" });
 	authorSelect.multiple = true;
+	authorSelect.hidden = true;
 	for (const s of state.studentsByNotionId.values()) {
 		authorSelect.appendChild(el("option", { value: s.notionId, text: s.choiceLabel || s.displayName }));
 	}
 	setSelectedAuthorIds(authorSelect, Array.isArray(work.authorIds) ? work.authorIds : []);
 
 	const authorCandidates = getAuthorCandidatesForWork(work);
-	const authorCandidateChips = el("div", { class: "chips" });
+	const authorSelected = el("div", { class: "chips", hidden: true });
 	const authorCandidateNotes = el("div", { class: "candidate-notes" });
-	if (authorCandidates.length > 0) {
-		authorCandidates.forEach((c) => {
-			const chip = el("span", { class: "chip" });
-			chip.appendChild(el("span", { text: c.label }));
-			chip.addEventListener("click", () => {
-				const selected = new Set(getSelectedAuthorIds(authorSelect));
-				if (selected.has(c.id)) {
-					selected.delete(c.id);
-					showToast(`作者候補を解除: ${c.label}`);
-				} else {
-					ensureAuthorOption(authorSelect, buildStudentRecord({ id: c.id, display_name: c.label }));
-					selected.add(c.id);
-					showToast(`作者候補を追加: ${c.label}`);
-				}
-				setSelectedAuthorIds(authorSelect, Array.from(selected));
-			});
-			authorCandidateChips.appendChild(chip);
+	const authorSearchInput = el("input", {
+		class: "input",
+		type: "text",
+		placeholder: "例：けい",
+		autocomplete: "off",
+		"aria-label": "作者を名簿検索",
+	});
+	const authorSearchResults = el("div", { class: "suggest" });
+
+	const syncModalAuthorUi = () => {
+		syncAuthorPickerUi({
+			selectEl: authorSelect,
+			selectedRoot: authorSelected,
+			candidatesRoot: authorCandidateNotes,
+			candidates: authorCandidates,
 		});
-	} else {
-		authorCandidateChips.appendChild(el("div", { class: "subnote", text: "当日参加者候補なし（名簿から選択してください）" }));
-	}
-	renderAuthorCandidateNotes(authorCandidateNotes, authorCandidates);
+	};
+
+	authorSelect.addEventListener("change", syncModalAuthorUi);
+	bindAuthorSearchInput({
+		inputEl: authorSearchInput,
+		resultsRoot: authorSearchResults,
+		selectEl: authorSelect,
+	});
+	syncModalAuthorUi();
 
 	const tagQuery = el("input", { class: "input", type: "text", placeholder: "タグ検索", autocomplete: "off" });
 	const tagSuggest = el("div", { class: "suggest" });
@@ -2262,7 +2460,19 @@ function renderWorkModal(work, index) {
 
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips, authorCandidateNotes]),
+		el("div", { class: "form-row" }, [
+			el("label", { class: "label", text: "作者" }),
+			authorSelect,
+			el("div", { class: "author-picker" }, [
+				authorSelected,
+				authorCandidateNotes,
+				el("div", { class: "author-picker__search" }, [
+					el("div", { class: "subnote", text: "名簿検索" }),
+					authorSearchInput,
+					authorSearchResults,
+				]),
+			]),
+		]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot, tagRelationEditor]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [
