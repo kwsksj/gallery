@@ -365,19 +365,15 @@ function findSessionNoteInRecords(records, participant) {
 function extractGroupSessionNote(group, participant) {
 	const studentId = trimText(participant?.student_id);
 	const displayName = trimText(participant?.display_name);
+	const lookupKeys = Array.from(new Set([studentId, displayName].filter(Boolean)));
 	for (const mapKey of GROUP_SESSION_NOTE_MAP_KEYS) {
 		const map = group?.[mapKey];
 		if (!map || typeof map !== "object" || Array.isArray(map)) continue;
-		if (studentId && map[studentId] !== undefined) {
-			const direct = toOptionalText(map[studentId]);
+		for (const key of lookupKeys) {
+			if (map[key] === undefined) continue;
+			const direct = toOptionalText(map[key]);
 			if (direct) return direct;
-			const nested = extractFirstText(map[studentId], SESSION_NOTE_PROP_KEYS);
-			if (nested) return nested;
-		}
-		if (displayName && map[displayName] !== undefined) {
-			const direct = toOptionalText(map[displayName]);
-			if (direct) return direct;
-			const nested = extractFirstText(map[displayName], SESSION_NOTE_PROP_KEYS);
+			const nested = extractFirstText(map[key], SESSION_NOTE_PROP_KEYS);
 			if (nested) return nested;
 		}
 	}
