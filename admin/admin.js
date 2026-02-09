@@ -281,6 +281,113 @@ function trimText(value) {
 	return String(value || "").trim();
 }
 
+function toOptionalText(value) {
+	if (typeof value === "string") return trimText(value);
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) {
+		return value
+			.map((item) => toOptionalText(item))
+			.filter(Boolean)
+			.join(" / ");
+	}
+	return "";
+}
+
+function extractFirstText(source, keys) {
+	if (!source || typeof source !== "object") return "";
+	for (const key of keys) {
+		const value = toOptionalText(source[key]);
+		if (value) return value;
+	}
+	return "";
+}
+
+const SESSION_NOTE_PROP_KEYS = [
+	"session_note",
+	"sessionNote",
+	"セッションノート",
+];
+const RESERVATION_CONTAINER_KEYS = [
+	"reservation",
+	"reservation_record",
+	"reservation_records",
+	"reservationRecord",
+	"reservationRecords",
+	"予約記録",
+];
+const GROUP_SESSION_NOTE_MAP_KEYS = [
+	"session_notes_by_student_id",
+	"sessionNotesByStudentId",
+	"session_notes",
+	"sessionNotes",
+	"セッションノート",
+];
+const GROUP_RESERVATION_RECORDS_KEYS = [
+	"reservation_records",
+	"reservationRecords",
+	"予約記録",
+];
+
+function extractParticipantSessionNote(participant) {
+	const direct = extractFirstText(participant, SESSION_NOTE_PROP_KEYS);
+	if (direct) return direct;
+
+	for (const key of RESERVATION_CONTAINER_KEYS) {
+		const container = participant?.[key];
+		if (Array.isArray(container)) {
+			const merged = container
+				.map((item) => extractFirstText(item, SESSION_NOTE_PROP_KEYS))
+				.filter(Boolean)
+				.join(" / ");
+			if (merged) return merged;
+			continue;
+		}
+		const nested = extractFirstText(container, SESSION_NOTE_PROP_KEYS);
+		if (nested) return nested;
+	}
+	return "";
+}
+
+function findSessionNoteInRecords(records, participant) {
+	if (!Array.isArray(records)) return "";
+	const studentId = trimText(participant?.student_id);
+	const displayName = trimText(participant?.display_name);
+	const matched = records.find((record) => {
+		const recordStudentId = trimText(record?.student_id || record?.studentId || record?.id);
+		if (studentId && recordStudentId && studentId === recordStudentId) return true;
+		const recordName = trimText(record?.display_name || record?.displayName || record?.name || record?.student_name || record?.studentName);
+		return Boolean(displayName && recordName && displayName === recordName);
+	});
+	if (!matched) return "";
+	return extractFirstText(matched, SESSION_NOTE_PROP_KEYS);
+}
+
+function extractGroupSessionNote(group, participant) {
+	const studentId = trimText(participant?.student_id);
+	const displayName = trimText(participant?.display_name);
+	const lookupKeys = Array.from(new Set([studentId, displayName].filter(Boolean)));
+	for (const mapKey of GROUP_SESSION_NOTE_MAP_KEYS) {
+		const map = group?.[mapKey];
+		if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+		for (const key of lookupKeys) {
+			if (map[key] === undefined) continue;
+			const direct = toOptionalText(map[key]);
+			if (direct) return direct;
+			const nested = extractFirstText(map[key], SESSION_NOTE_PROP_KEYS);
+			if (nested) return nested;
+		}
+	}
+	for (const recordsKey of GROUP_RESERVATION_RECORDS_KEYS) {
+		const note = findSessionNoteInRecords(group?.[recordsKey], participant);
+		if (note) return note;
+	}
+	return "";
+}
+
+function resolveParticipantSessionNote(participant, group) {
+	return extractParticipantSessionNote(participant) || extractGroupSessionNote(group, participant);
+}
+
 function firstNChars(value, n) {
 	return Array.from(trimText(value)).slice(0, n).join("");
 }
@@ -833,6 +940,48 @@ function getParticipantsGroups(ymd) {
 	return Array.isArray(groups) ? groups : [];
 }
 
+function buildAuthorCandidateFromParticipant(participant, { group = null } = {}) {
+	const studentId = trimText(participant?.student_id);
+	const mapped = studentId ? state.studentsByStudentId.get(studentId) : null;
+	const fallback = buildStudentRecord({
+		student_id: studentId,
+		display_name: trimText(participant?.display_name),
+	});
+	const notionId = mapped?.notionId || fallback.notionId || "";
+	const label = mapped?.choiceLabel || fallback.choiceLabel || studentId;
+	if (!notionId || !label) return null;
+	return {
+		id: notionId,
+		label,
+		sessionNote: resolveParticipantSessionNote(participant, group),
+	};
+}
+
+function renderAuthorCandidateNotes(root, candidates) {
+	if (!root) return;
+	root.innerHTML = "";
+	const notes = (Array.isArray(candidates) ? candidates : [])
+		.map((candidate) => ({
+			label: trimText(candidate?.label),
+			note: trimText(candidate?.sessionNote),
+		}))
+		.filter((entry) => entry.label && entry.note);
+	if (notes.length === 0) {
+		root.hidden = true;
+		return;
+	}
+	root.hidden = false;
+	root.appendChild(el("div", { class: "subnote", text: "予約記録のセッションノート" }));
+	notes.forEach((entry) => {
+		root.appendChild(
+			el("div", { class: "candidate-note" }, [
+				el("div", { class: "candidate-note__name", text: entry.label }),
+				el("div", { class: "candidate-note__text", text: entry.note }),
+			]),
+		);
+	});
+}
+
 function getAuthorCandidatesForWork(work) {
 	const ymd = String(work?.completedDate || "").trim();
 	if (!ymd) return [];
@@ -852,17 +1001,7 @@ function getAuthorCandidatesForWork(work) {
 
 	const participants = Array.isArray(group?.participants) ? group.participants : [];
 	return participants
-		.map((p) => {
-			const studentId = trimText(p.student_id);
-			const mapped = studentId ? state.studentsByStudentId.get(studentId) : null;
-			const fallback = buildStudentRecord({
-				student_id: studentId,
-				display_name: trimText(p.display_name),
-			});
-			const notionId = mapped?.notionId || fallback.notionId || "";
-			const label = mapped?.choiceLabel || fallback.choiceLabel || studentId;
-			return notionId && label ? { id: notionId, label } : null;
-		})
+		.map((participant) => buildAuthorCandidateFromParticipant(participant, { group }))
 		.filter(Boolean);
 }
 
@@ -1006,6 +1145,7 @@ function updateUploadGroupAndAuthorCandidates() {
 
 	const groupSelect = qs("#upload-group");
 	const authorSelect = qs("#upload-author");
+	const authorCandidateNotesRoot = qs("#upload-author-candidate-notes");
 
 	const groups = ymd ? getParticipantsGroups(ymd) : [];
 	populateSelect(groupSelect, {
@@ -1046,19 +1186,13 @@ function updateUploadGroupAndAuthorCandidates() {
 
 	const participants = Array.isArray(selectedGroup?.participants) ? selectedGroup.participants : [];
 	const selectedAuthorIds = getSelectedAuthorIds(authorSelect);
-	const options = participants
-		.map((p) => {
-			const studentId = trimText(p.student_id);
-			const mapped = studentId ? state.studentsByStudentId.get(studentId) : null;
-			const fallback = buildStudentRecord({
-				student_id: studentId,
-				display_name: trimText(p.display_name),
-			});
-			const value = trimText(mapped?.notionId || fallback.notionId);
-			const label = trimText(mapped?.choiceLabel || fallback.choiceLabel);
-			return value && label ? { value, label } : null;
-		})
+	const candidates = participants
+		.map((participant) => buildAuthorCandidateFromParticipant(participant, { group: selectedGroup }))
 		.filter(Boolean);
+	const options = candidates.map((candidate) => ({
+		value: candidate.id,
+		label: candidate.label,
+	}));
 
 	authorSelect.innerHTML = "";
 	options.forEach((o) => authorSelect.appendChild(el("option", { value: o.value, text: o.label })));
@@ -1067,6 +1201,7 @@ function updateUploadGroupAndAuthorCandidates() {
 		if (record) ensureAuthorOption(authorSelect, record);
 	}
 	setSelectedAuthorIds(authorSelect, selectedAuthorIds);
+	renderAuthorCandidateNotes(authorCandidateNotesRoot, candidates);
 }
 
 function initUpload() {
@@ -1631,6 +1766,7 @@ function renderWorkModal(work, index) {
 
 	const authorCandidates = getAuthorCandidatesForWork(work);
 	const authorCandidateChips = el("div", { class: "chips" });
+	const authorCandidateNotes = el("div", { class: "candidate-notes" });
 	if (authorCandidates.length > 0) {
 		authorCandidates.forEach((c) => {
 			const chip = el("span", { class: "chip" });
@@ -1652,6 +1788,7 @@ function renderWorkModal(work, index) {
 	} else {
 		authorCandidateChips.appendChild(el("div", { class: "subnote", text: "当日参加者候補なし（名簿から選択してください）" }));
 	}
+	renderAuthorCandidateNotes(authorCandidateNotes, authorCandidates);
 
 	const tagQuery = el("input", { class: "input", type: "text", placeholder: "タグ検索", autocomplete: "off" });
 	const tagSuggest = el("div", { class: "suggest" });
@@ -1915,7 +2052,7 @@ function renderWorkModal(work, index) {
 
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips]),
+		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips, authorCandidateNotes]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [
