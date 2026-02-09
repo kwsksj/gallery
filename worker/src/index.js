@@ -992,6 +992,137 @@ async function handleNotionCreateTag(request, env) {
   );
 }
 
+async function handleNotionUpdateTag(request, env) {
+  const tagsDbId = getEnvString(env, "NOTION_TAGS_DB_ID");
+  if (!tagsDbId) return serverError("NOTION_TAGS_DB_ID not configured");
+
+  const payload = await readJson(request);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return badRequest("invalid json");
+
+  const tagsDbRes = await notionFetch(env, `/databases/${tagsDbId}`, { method: "GET" });
+  if (!tagsDbRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to fetch tags database", detail: tagsDbRes.data }, 500);
+  }
+  const tagsDb = tagsDbRes.data;
+  const tagsProps = getTagsProps(env);
+  const titleProp = pickPropertyName(tagsDb, [tagsProps.title, "タグ"], "title");
+  const parentsProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_PARENTS_PROP", "親タグ"), "親タグ"], "");
+  const childrenProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_CHILDREN_PROP", "子タグ"), "子タグ"], "");
+
+  const loadTagPage = async (id) => {
+    const res = await notionFetch(env, `/pages/${id}`, { method: "GET" });
+    if (!res.ok) {
+      return { ok: false, detail: res.data };
+    }
+    return { ok: true, page: res.data };
+  };
+
+  const patchTagRelations = async ({ id, addParentIds = [], addChildIds = [] }) => {
+    const tagId = asString(id).trim();
+    if (!tagId) return { ok: false, error: "missing tag id" };
+    const parentIds = uniqueIds(addParentIds).filter((value) => value !== tagId);
+    const childIds = uniqueIds(addChildIds).filter((value) => value !== tagId);
+    if (parentIds.length === 0 && childIds.length === 0) return { ok: false, error: "no relation updates" };
+    if (parentIds.length > 0 && !parentsProp) return { ok: false, error: "parent relation property not found" };
+    if (childIds.length > 0 && !childrenProp) return { ok: false, error: "child relation property not found" };
+
+    const loaded = await loadTagPage(tagId);
+    if (!loaded.ok) {
+      return { ok: false, error: "failed to fetch tag page", detail: loaded.detail };
+    }
+
+    const page = loaded.page;
+    const currentParents = parentsProp ? extractRelationIds(getPageProperty(page, parentsProp)) : [];
+    const currentChildren = childrenProp ? extractRelationIds(getPageProperty(page, childrenProp)) : [];
+    const nextParents = uniqueIds([...currentParents, ...parentIds]);
+    const nextChildren = uniqueIds([...currentChildren, ...childIds]);
+    const parentsChanged = parentIds.length > 0 && nextParents.length !== currentParents.length;
+    const childrenChanged = childIds.length > 0 && nextChildren.length !== currentChildren.length;
+
+    if (!parentsChanged && !childrenChanged) {
+      return {
+        ok: true,
+        tag: {
+          id: tagId,
+          name: extractPropertyText(getPageProperty(page, titleProp)),
+          parents: currentParents,
+          children: currentChildren,
+        },
+      };
+    }
+
+    const properties = {};
+    if (parentsProp && parentsChanged) properties[parentsProp] = notionRelation(nextParents);
+    if (childrenProp && childrenChanged) properties[childrenProp] = notionRelation(nextChildren);
+
+    const patchRes = await notionFetch(env, `/pages/${tagId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ properties }),
+    });
+    if (!patchRes.ok) {
+      return { ok: false, error: "failed to update tag page", detail: patchRes.data };
+    }
+
+    return {
+      ok: true,
+      tag: {
+        id: tagId,
+        name: extractPropertyText(getPageProperty(page, titleProp)),
+        parents: nextParents,
+        children: nextChildren,
+      },
+    };
+  };
+
+  const directTagId = asString(payload.id).trim();
+  if (directTagId) {
+    const addParentIds = Array.isArray(payload.addParentIds) ? payload.addParentIds : [];
+    const addChildIds = Array.isArray(payload.addChildIds) ? payload.addChildIds : [];
+    const updated = await patchTagRelations({
+      id: directTagId,
+      addParentIds,
+      addChildIds,
+    });
+    if (!updated.ok) {
+      return jsonResponse(
+        { ok: false, error: updated.error || "failed to update tag relation", detail: updated.detail || null },
+        500,
+      );
+    }
+    return okResponse(updated.tag);
+  }
+
+  const parentId = asString(payload.parentId).trim();
+  const childId = asString(payload.childId).trim();
+  if (!parentId || !childId) return badRequest("missing parentId or childId");
+  if (parentId === childId) return badRequest("parent and child must be different");
+
+  const childUpdated = await patchTagRelations({ id: childId, addParentIds: [parentId] });
+  if (!childUpdated.ok) {
+    return jsonResponse(
+      { ok: false, error: childUpdated.error || "failed to update child tag relation", detail: childUpdated.detail || null },
+      500,
+    );
+  }
+
+  let parentUpdated = null;
+  if (childrenProp) {
+    const result = await patchTagRelations({ id: parentId, addChildIds: [childId] });
+    if (!result.ok) {
+      return jsonResponse(
+        { ok: false, error: result.error || "failed to update parent tag relation", detail: result.detail || null },
+        500,
+      );
+    }
+    parentUpdated = result.tag;
+  }
+
+  return okResponse({
+    parent: parentUpdated || { id: parentId, children: [] },
+    child: childUpdated.tag,
+  });
+}
+
 async function handleR2Upload(request, env) {
   if (!env.GALLERY_R2) return serverError("R2 binding not configured (GALLERY_R2)");
   const baseUrl = getEnvString(env, "R2_PUBLIC_BASE_URL");
@@ -1671,6 +1802,10 @@ export default {
 
     if (pathname === "/admin/notion/tag" && request.method === "POST") {
       return handleNotionCreateTag(request, env);
+    }
+
+    if (pathname === "/admin/notion/tag" && request.method === "PATCH") {
+      return handleNotionUpdateTag(request, env);
     }
 
     if (pathname === "/admin/r2/upload" && request.method === "POST") {

@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>先生専用アップロード</title>
 		<link rel="stylesheet" href="./shared/gallery-core.css" />
-		<link rel="stylesheet" href="./admin/admin.css?v=20260209-2" />
+		<link rel="stylesheet" href="./admin/admin.css?v=20260209-4" />
 	</head>
 	<body>
 		<div
@@ -228,6 +228,13 @@
 				<section id="view-tools" class="view" data-view="tools">
 					<h2 class="view-title">ツール</h2>
 					<div class="panel">
+						<div class="label">タグ管理（タグDB）</div>
+						<div id="tools-tag-relation-editor"></div>
+						<div class="subnote">
+							タグの新規作成、親子関係付き作成、既存タグ同士の親子関係追加ができます。
+						</div>
+					</div>
+					<div class="panel">
 						<div class="toolbar">
 							<div>
 								<div class="label">タグ親子関係の作品反映</div>
@@ -262,6 +269,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260209-2"></script>
+		<script type="module" src="./admin/admin.js?v=20260209-4"></script>
 	</body>
 </html>
