@@ -655,39 +655,26 @@ function normalizeTagIdList(ids) {
 	return out;
 }
 
-function syncLocalTagRelation(tagId, { parentIds = [], childIds = [] } = {}) {
-	const id = trimText(tagId);
-	if (!id) return;
-
-	const current = state.tagsById.get(id);
-	if (!current) return;
-
-	const normalizedParents = normalizeTagIdList(parentIds);
-	const normalizedChildren = normalizeTagIdList(childIds);
-	const nextTag = {
-		...current,
-		parents: Array.from(new Set([...(current.parents || []), ...normalizedParents])),
-		children: Array.from(new Set([...(current.children || []), ...normalizedChildren])),
+function normalizeTagForState(rawTag, fallback = {}) {
+	const base = fallback && typeof fallback === "object" ? fallback : {};
+	return {
+		id: trimText(rawTag?.id || base.id),
+		name: trimText(rawTag?.name || base.name),
+		aliases: Array.isArray(rawTag?.aliases)
+			? rawTag.aliases.map(String)
+			: Array.isArray(base.aliases)
+				? base.aliases
+				: [],
+		status: trimText(rawTag?.status || base.status || "active"),
+		merge_to: trimText(rawTag?.merge_to || base.merge_to),
+		parents: normalizeTagIdList(rawTag?.parents ?? base.parents ?? []),
+		children: normalizeTagIdList(rawTag?.children ?? base.children ?? []),
+		usage_count: Number.isFinite(Number(rawTag?.usage_count))
+			? Number(rawTag.usage_count)
+			: Number.isFinite(Number(base.usage_count))
+				? Number(base.usage_count)
+				: 0,
 	};
-	upsertTagSearchEntry(nextTag);
-
-	for (const parentId of normalizedParents) {
-		const parent = state.tagsById.get(parentId);
-		if (!parent) continue;
-		upsertTagSearchEntry({
-			...parent,
-			children: Array.from(new Set([...(parent.children || []), id])),
-		});
-	}
-
-	for (const childId of normalizedChildren) {
-		const child = state.tagsById.get(childId);
-		if (!child) continue;
-		upsertTagSearchEntry({
-			...child,
-			parents: Array.from(new Set([...(child.parents || []), id])),
-		});
-	}
 }
 
 async function createTagFromUi(rawName, { parentIds = [], childIds = [] } = {}) {
@@ -712,14 +699,8 @@ async function createTagFromUi(rawName, { parentIds = [], childIds = [] } = {}) 
 					addChildIds: normalizedChildIds,
 				}),
 			});
-			const nextParents = normalizeTagIdList(updated?.parents || [...(state.tagsById.get(id)?.parents || []), ...normalizedParentIds]);
-			const nextChildren = normalizeTagIdList(updated?.children || [...(state.tagsById.get(id)?.children || []), ...normalizedChildIds]);
-			upsertTagSearchEntry({
-				id,
-				parents: nextParents,
-				children: nextChildren,
-			});
-			syncLocalTagRelation(id, { parentIds: normalizedParentIds, childIds: normalizedChildIds });
+			const nextTag = normalizeTagForState(updated, state.tagsById.get(id) || { id });
+			upsertTagSearchEntry(nextTag);
 		}
 		return {
 			id,
@@ -741,20 +722,18 @@ async function createTagFromUi(rawName, { parentIds = [], childIds = [] } = {}) 
 	const id = trimText(created?.id);
 	if (!id) throw new Error("タグ作成結果が不正です（idなし）");
 
-	const createdParentIds = normalizeTagIdList(created?.parents || normalizedParentIds);
-	const createdChildIds = normalizeTagIdList(created?.children || normalizedChildIds);
-	upsertTagSearchEntry({
+	const createdTag = normalizeTagForState(created, {
 		id,
-		name: trimText(created?.name || name),
-		aliases: Array.isArray(created?.aliases) ? created.aliases : [],
-		status: trimText(created?.status || "active"),
-		merge_to: trimText(created?.merge_to),
-		parents: createdParentIds,
-		children: createdChildIds,
-		usage_count: Number.isFinite(Number(created?.usage_count)) ? Number(created.usage_count) : 0,
+		name,
+		aliases: [],
+		status: "active",
+		merge_to: "",
+		parents: normalizedParentIds,
+		children: normalizedChildIds,
+		usage_count: 0,
 	});
-	syncLocalTagRelation(id, { parentIds: createdParentIds, childIds: createdChildIds });
-	return { id, created: true, parentIds: createdParentIds, childIds: createdChildIds };
+	upsertTagSearchEntry(createdTag);
+	return { id: createdTag.id || id, created: true, parentIds: createdTag.parents, childIds: createdTag.children };
 }
 
 async function addTagParentChildRelation(parentIdRaw, childIdRaw) {
@@ -763,7 +742,7 @@ async function addTagParentChildRelation(parentIdRaw, childIdRaw) {
 	if (!parentId || !childId) throw new Error("親タグ・子タグを選択してください");
 	if (parentId === childId) throw new Error("親タグと子タグに同じタグは設定できません");
 
-	await apiFetch("/admin/notion/tag", {
+	const updated = await apiFetch("/admin/notion/tag", {
 		method: "PATCH",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
@@ -772,8 +751,18 @@ async function addTagParentChildRelation(parentIdRaw, childIdRaw) {
 		}),
 	});
 
-	syncLocalTagRelation(childId, { parentIds: [parentId] });
-	syncLocalTagRelation(parentId, { childIds: [childId] });
+	const childTag = normalizeTagForState(updated?.child, state.tagsById.get(childId) || { id: childId });
+	if (childTag.id) upsertTagSearchEntry(childTag);
+
+	const parentChildren = normalizeTagIdList(updated?.parent?.children);
+	if (parentChildren.includes(childId)) {
+		const parentTag = normalizeTagForState(
+			{ id: parentId, children: parentChildren },
+			state.tagsById.get(parentId) || { id: parentId },
+		);
+		if (parentTag.id) upsertTagSearchEntry(parentTag);
+	}
+
 	return { parentId, childId };
 }
 

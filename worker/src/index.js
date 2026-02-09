@@ -1036,11 +1036,10 @@ async function handleNotionUpdateTag(request, env) {
     const currentChildren = childrenProp ? extractRelationIds(getPageProperty(page, childrenProp)) : [];
     const nextParents = uniqueIds([...currentParents, ...parentIds]);
     const nextChildren = uniqueIds([...currentChildren, ...childIds]);
+    const parentsChanged = parentIds.length > 0 && nextParents.length !== currentParents.length;
+    const childrenChanged = childIds.length > 0 && nextChildren.length !== currentChildren.length;
 
-    const properties = {};
-    if (parentsProp && parentIds.length > 0) properties[parentsProp] = notionRelation(nextParents);
-    if (childrenProp && childIds.length > 0) properties[childrenProp] = notionRelation(nextChildren);
-    if (Object.keys(properties).length === 0) {
+    if (!parentsChanged && !childrenChanged) {
       return {
         ok: true,
         tag: {
@@ -1051,6 +1050,10 @@ async function handleNotionUpdateTag(request, env) {
         },
       };
     }
+
+    const properties = {};
+    if (parentsProp && parentsChanged) properties[parentsProp] = notionRelation(nextParents);
+    if (childrenProp && childrenChanged) properties[childrenProp] = notionRelation(nextChildren);
 
     const patchRes = await notionFetch(env, `/pages/${tagId}`, {
       method: "PATCH",
