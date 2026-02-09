@@ -1237,23 +1237,23 @@ function initTagInput(prefix) {
 		const list = searchTags(query);
 		suggestRoot.innerHTML = "";
 
-			list.forEach((tag) => {
-				const hint = tag.status === "merged" ? "統合タグ" : tag.usage_count ? `作品数 ${tag.usage_count}` : "";
-				const item = el("div", { class: "suggest-item" }, [
-					el("span", { text: tag.name }),
-					el("span", { class: "suggest-item__hint", text: hint }),
-				]);
-				item.addEventListener("click", () => {
-					const resolved = resolveMergedTagId(tag.id);
-					if (!resolved) return;
-					const next = Array.from(new Set([...state.upload.explicitTagIds, resolved]));
-					setState(next);
-					queryEl.value = "";
-					suggestRoot.innerHTML = "";
-					queryEl.focus();
-				});
-				suggestRoot.appendChild(item);
+		list.forEach((tag) => {
+			const hint = tag.status === "merged" ? "統合タグ" : tag.usage_count ? `作品数 ${tag.usage_count}` : "";
+			const item = el("div", { class: "suggest-item" }, [
+				el("span", { text: tag.name }),
+				el("span", { class: "suggest-item__hint", text: hint }),
+			]);
+			item.addEventListener("click", () => {
+				const resolved = resolveMergedTagId(tag.id);
+				if (!resolved) return;
+				const next = Array.from(new Set([...state.upload.explicitTagIds, resolved]));
+				setState(next);
+				queryEl.value = "";
+				suggestRoot.innerHTML = "";
+				queryEl.focus();
 			});
+			suggestRoot.appendChild(item);
+		});
 
 		const q = String(query || "").trim();
 		if (q && list.length < 6) {
@@ -1269,7 +1269,7 @@ function initTagInput(prefix) {
 				{ relatedTagIds: state.upload.explicitTagIds },
 			);
 		}
-		};
+	};
 
 	queryEl.addEventListener(
 		"input",
