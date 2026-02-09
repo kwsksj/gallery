@@ -456,6 +456,7 @@ function indexTagName(tag) {
 function buildTagSearchList(tagsIndex) {
 	const tags = Array.isArray(tagsIndex?.tags) ? tagsIndex.tags : [];
 	const list = [];
+	state.tagsById.clear();
 	state.tagsByNormalizedName.clear();
 	for (const t of tags) {
 		if (!t || !t.id) continue;
@@ -534,30 +535,103 @@ function findExistingTagIdByName(name) {
 	return trimText(state.tagsByNormalizedName.get(q));
 }
 
-async function createTagFromUi(rawName) {
+function normalizeTagIdList(ids) {
+	if (!Array.isArray(ids)) return [];
+	const out = [];
+	const seen = new Set();
+	for (const rawId of ids) {
+		const id = resolveMergedTagId(trimText(rawId));
+		if (!id || seen.has(id)) continue;
+		seen.add(id);
+		out.push(id);
+	}
+	return out;
+}
+
+function syncLocalTagRelation(tagId, { parentIds = [], childIds = [] } = {}) {
+	const id = trimText(tagId);
+	if (!id) return;
+
+	const current = state.tagsById.get(id);
+	if (!current) return;
+
+	const normalizedParents = normalizeTagIdList(parentIds);
+	const normalizedChildren = normalizeTagIdList(childIds);
+	const nextTag = {
+		...current,
+		parents: Array.from(new Set([...(current.parents || []), ...normalizedParents])),
+		children: Array.from(new Set([...(current.children || []), ...normalizedChildren])),
+	};
+	upsertTagSearchEntry(nextTag);
+
+	for (const parentId of normalizedParents) {
+		const parent = state.tagsById.get(parentId);
+		if (!parent) continue;
+		upsertTagSearchEntry({
+			...parent,
+			children: Array.from(new Set([...(parent.children || []), id])),
+		});
+	}
+
+	for (const childId of normalizedChildren) {
+		const child = state.tagsById.get(childId);
+		if (!child) continue;
+		upsertTagSearchEntry({
+			...child,
+			parents: Array.from(new Set([...(child.parents || []), id])),
+		});
+	}
+}
+
+async function createTagFromUi(rawName, { parentIds = [], childIds = [] } = {}) {
 	const name = trimText(rawName);
 	if (!name) throw new Error("タグ名を入力してください");
 	if (!state.tagsIndexLoaded) {
 		throw new Error("タグインデックス未取得のため新規作成できません。再読み込み後にお試しください。");
 	}
 
+	const normalizedParentIds = normalizeTagIdList(parentIds);
+	const normalizedChildIds = normalizeTagIdList(childIds);
 	const existingId = findExistingTagIdByName(name);
 	if (existingId) {
-		return { id: existingId, created: false };
+		const id = resolveMergedTagId(existingId);
+		return {
+			id,
+			created: false,
+			parentIds: normalizeTagIdList(state.tagsById.get(id)?.parents || []),
+			childIds: normalizeTagIdList(state.tagsById.get(id)?.children || []),
+		};
 	}
 
 	const created = await apiFetch("/admin/notion/tag", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ name }),
+		body: JSON.stringify({
+			name,
+			parentIds: normalizedParentIds,
+			childIds: normalizedChildIds,
+		}),
 	});
 	const id = trimText(created?.id);
 	if (!id) throw new Error("タグ作成結果が不正です（idなし）");
-	upsertTagSearchEntry({ id, name, aliases: [], status: "active", merge_to: "", parents: [], children: [], usage_count: 0 });
-	return { id, created: true };
+
+	const createdParentIds = normalizeTagIdList(created?.parents || normalizedParentIds);
+	const createdChildIds = normalizeTagIdList(created?.children || normalizedChildIds);
+	upsertTagSearchEntry({
+		id,
+		name: trimText(created?.name || name),
+		aliases: Array.isArray(created?.aliases) ? created.aliases : [],
+		status: trimText(created?.status || "active"),
+		merge_to: trimText(created?.merge_to),
+		parents: createdParentIds,
+		children: createdChildIds,
+		usage_count: Number.isFinite(Number(created?.usage_count)) ? Number(created.usage_count) : 0,
+	});
+	syncLocalTagRelation(id, { parentIds: createdParentIds, childIds: createdChildIds });
+	return { id, created: true, parentIds: createdParentIds, childIds: createdChildIds };
 }
 
-function appendCreateTagSuggest(suggestRoot, query, onCreated) {
+function appendCreateTagSuggest(suggestRoot, query, onCreated, { relatedTagIds = [] } = {}) {
 	const q = trimText(query);
 	if (!q) return;
 	if (!state.tagsIndexLoaded) {
@@ -570,26 +644,48 @@ function appendCreateTagSuggest(suggestRoot, query, onCreated) {
 		return;
 	}
 	if (findExistingTagIdByName(q)) return;
-	const create = el("div", { class: "suggest-item" }, [
-		el("span", { text: `「${q}」を新規作成` }),
-		el("span", { class: "suggest-item__hint", text: "タグDBに追加" }),
-	]);
+	const normalizedRelatedTagIds = normalizeTagIdList(relatedTagIds);
 	let creating = false;
-	create.addEventListener("click", async () => {
-		if (creating) return;
-		creating = true;
-		try {
-			const result = await createTagFromUi(q);
-			const id = resolveMergedTagId(result.id);
-			showToast(result.created ? "タグを作成しました" : "既存タグを追加しました");
-			onCreated(id);
-		} catch (err) {
-			showToast(`タグ作成に失敗: ${err.message}`);
-		} finally {
-			creating = false;
-		}
+
+	const appendCreateAction = ({ label, hint, parentIds = [], childIds = [] }) => {
+		const create = el("div", { class: "suggest-item" }, [
+			el("span", { text: label }),
+			el("span", { class: "suggest-item__hint", text: hint }),
+		]);
+		create.addEventListener("click", async () => {
+			if (creating) return;
+			creating = true;
+			try {
+				const result = await createTagFromUi(q, { parentIds, childIds });
+				const id = resolveMergedTagId(result.id);
+				showToast(result.created ? "タグを作成しました" : "既存タグを追加しました");
+				onCreated(id);
+			} catch (err) {
+				showToast(`タグ作成に失敗: ${err.message}`);
+			} finally {
+				creating = false;
+			}
+		});
+		suggestRoot.appendChild(create);
+	};
+
+	appendCreateAction({
+		label: `「${q}」を新規作成`,
+		hint: "関係なし",
 	});
-	suggestRoot.appendChild(create);
+
+	if (normalizedRelatedTagIds.length > 0) {
+		appendCreateAction({
+			label: `「${q}」を新規作成（選択中を親にする）`,
+			hint: `${normalizedRelatedTagIds.length}件を親タグとして関連付け`,
+			parentIds: normalizedRelatedTagIds,
+		});
+		appendCreateAction({
+			label: `「${q}」を新規作成（選択中を子にする）`,
+			hint: `${normalizedRelatedTagIds.length}件を子タグとして関連付け`,
+			childIds: normalizedRelatedTagIds,
+		});
+	}
 }
 
 function renderTitleTagSuggest(root, { getTitle, getExplicitTagIds, onTagAdded }) {
@@ -1141,34 +1237,39 @@ function initTagInput(prefix) {
 		const list = searchTags(query);
 		suggestRoot.innerHTML = "";
 
-		list.forEach((tag) => {
-			const hint = tag.status === "merged" ? "統合タグ" : tag.usage_count ? `作品数 ${tag.usage_count}` : "";
-			const item = el("div", { class: "suggest-item" }, [
-				el("span", { text: tag.name }),
-				el("span", { class: "suggest-item__hint", text: hint }),
-			]);
-			item.addEventListener("click", () => {
-				const resolved = resolveMergedTagId(tag.id);
-				if (!resolved) return;
-				const next = Array.from(new Set([...state.upload.explicitTagIds, resolved]));
-				setState(next);
-				queryEl.value = "";
-				suggestRoot.innerHTML = "";
-				queryEl.focus();
+			list.forEach((tag) => {
+				const hint = tag.status === "merged" ? "統合タグ" : tag.usage_count ? `作品数 ${tag.usage_count}` : "";
+				const item = el("div", { class: "suggest-item" }, [
+					el("span", { text: tag.name }),
+					el("span", { class: "suggest-item__hint", text: hint }),
+				]);
+				item.addEventListener("click", () => {
+					const resolved = resolveMergedTagId(tag.id);
+					if (!resolved) return;
+					const next = Array.from(new Set([...state.upload.explicitTagIds, resolved]));
+					setState(next);
+					queryEl.value = "";
+					suggestRoot.innerHTML = "";
+					queryEl.focus();
+				});
+				suggestRoot.appendChild(item);
 			});
-			suggestRoot.appendChild(item);
-		});
 
 		const q = String(query || "").trim();
 		if (q && list.length < 6) {
-			appendCreateTagSuggest(suggestRoot, q, (id) => {
-				const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
-				setState(next);
-				queryEl.value = "";
-				suggestRoot.innerHTML = "";
-			});
+			appendCreateTagSuggest(
+				suggestRoot,
+				q,
+				(id) => {
+					const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
+					setState(next);
+					queryEl.value = "";
+					suggestRoot.innerHTML = "";
+				},
+				{ relatedTagIds: state.upload.explicitTagIds },
+			);
 		}
-	};
+		};
 
 	queryEl.addEventListener(
 		"input",
@@ -1324,6 +1425,7 @@ function applyCurationFilters() {
 	const from = qs("#curation-from").value;
 	const to = qs("#curation-to").value;
 	const classroom = qs("#curation-classroom").value;
+	const readyFilter = qs("#curation-ready-filter")?.value || "all";
 
 	const missingTitle = qs("#curation-missing-title").checked;
 	const missingAuthor = qs("#curation-missing-author").checked;
@@ -1333,6 +1435,8 @@ function applyCurationFilters() {
 		if (!isSameDayOrAfter(w.completedDate, from)) return false;
 		if (!isSameDayOrBefore(w.completedDate, to)) return false;
 		if (classroom && w.classroom !== classroom) return false;
+		if (readyFilter === "unprepared" && w.ready) return false;
+		if (readyFilter === "ready" && !w.ready) return false;
 		if (missingTitle && w.title) return false;
 		if (missingAuthor && (w.authorIds?.length || 0) > 0) return false;
 		if (missingTags && (w.tagIds?.length || 0) > 0) return false;
@@ -1357,6 +1461,7 @@ function renderWorkCard(work, index) {
 	meta.appendChild(
 		el("div", { class: "work-card__sub" }, [
 			el("span", { text: work.completedDate || "-" }),
+			el("span", { text: work.ready ? "整備済" : "未整備" }),
 			el("span", { text: work.classroom || "-" }),
 		]),
 	);
@@ -1364,6 +1469,24 @@ function renderWorkCard(work, index) {
 
 	card.addEventListener("click", () => openWorkModal(index));
 	return card;
+}
+
+async function fetchAllWorksForCuration() {
+	const out = [];
+	let cursor = "";
+	let loops = 0;
+	do {
+		const params = new URLSearchParams();
+		if (cursor) params.set("cursor", cursor);
+		const path = params.toString() ? `/admin/notion/works?${params.toString()}` : "/admin/notion/works";
+		const data = await apiFetch(path);
+		const results = Array.isArray(data?.results) ? data.results : [];
+		out.push(...results);
+		cursor = trimText(data?.nextCursor);
+		loops += 1;
+		if (loops > 200) throw new Error("作品一覧のページングが上限を超えました");
+	} while (cursor);
+	return out;
 }
 
 function renderCurationGrid() {
@@ -1378,13 +1501,16 @@ function renderCurationGrid() {
 async function loadCurationQueue() {
 	qs("#curation-status").textContent = "読み込み中…";
 	try {
-		const data = await apiFetch("/admin/notion/works?unprepared=1");
-		state.curation.works = data.results || [];
+		state.curation.works = await fetchAllWorksForCuration();
 		state.curation.filtered = [...state.curation.works];
 
 		const classroomSelect = qs("#curation-classroom");
+		const currentClassroom = classroomSelect.value;
 		const classrooms = Array.from(new Set(state.curation.works.map((w) => w.classroom).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ja"));
 		populateSelect(classroomSelect, { placeholder: "すべて", items: classrooms.map((v) => ({ value: v })) });
+		if (currentClassroom && classrooms.includes(currentClassroom)) {
+			classroomSelect.value = currentClassroom;
+		}
 
 		renderCurationGrid();
 		applyCurationFilters();
@@ -1582,12 +1708,17 @@ function renderWorkModal(work, index) {
 		});
 
 		if (q && list.length < 6) {
-			appendCreateTagSuggest(tagSuggest, q, (id) => {
-				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
-				tagQuery.value = "";
-				tagSuggest.innerHTML = "";
-				renderTags();
-			});
+			appendCreateTagSuggest(
+				tagSuggest,
+				q,
+				(id) => {
+					explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
+					tagQuery.value = "";
+					tagSuggest.innerHTML = "";
+					renderTags();
+				},
+				{ relatedTagIds: explicitTagIds },
+			);
 		}
 	}, 120);
 	tagQuery.addEventListener("input", renderTagSuggest);
@@ -1857,12 +1988,16 @@ function renderWorkModal(work, index) {
 			});
 			showToast("保存しました");
 
-			if (payload.ready) {
-				state.curation.works = state.curation.works.filter((w) => w.id !== work.id);
-			} else {
-				const idxAll = state.curation.works.findIndex((w) => w.id === work.id);
-				if (idxAll >= 0) state.curation.works[idxAll] = { ...work, ...payload, authorIds: payload.authorIds || [], tagIds, ready: payload.ready };
-			}
+			const nextWork = {
+				...work,
+				...payload,
+				authorIds: payload.authorIds || [],
+				tagIds,
+				ready: payload.ready,
+			};
+			const idxAll = state.curation.works.findIndex((w) => w.id === work.id);
+			if (idxAll >= 0) state.curation.works[idxAll] = nextWork;
+			else state.curation.works.unshift(nextWork);
 
 			applyCurationFilters();
 			if (goNext) {
@@ -1908,7 +2043,7 @@ function openWorkModal(index) {
 
 function initCuration() {
 	qs("#curation-refresh").addEventListener("click", () => loadCurationQueue());
-	qsa("#curation-from,#curation-to,#curation-classroom,#curation-missing-title,#curation-missing-author,#curation-missing-tags").forEach((elx) => {
+	qsa("#curation-from,#curation-to,#curation-classroom,#curation-ready-filter,#curation-missing-title,#curation-missing-author,#curation-missing-tags").forEach((elx) => {
 		elx.addEventListener("change", () => applyCurationFilters());
 	});
 }
@@ -1930,6 +2065,45 @@ function initHeaderActions() {
 }
 
 function initToolsActions() {
+	const recalcStatusEl = qs("#tools-tags-recalc-status");
+	if (recalcStatusEl) recalcStatusEl.textContent = "-";
+
+	const recalcBtn = qs("#trigger-tags-recalc-apply");
+	if (recalcBtn) {
+		recalcBtn.addEventListener("click", async () => {
+			if (!confirm("タグDBの親子関係・統合ルールを既存作品へ反映しますか？")) return;
+			recalcBtn.disabled = true;
+			try {
+				const res = await apiFetch("/admin/tag-recalc", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ apply: true }),
+				});
+				const updated = Number(res?.updated || 0);
+				const changed = Number(res?.changed || 0);
+				const scanned = Number(res?.scanned || 0);
+				const remaining = Number(res?.remaining || 0);
+				const warnings = Array.isArray(res?.warnings) ? res.warnings.length : 0;
+				if (recalcStatusEl) {
+					const suffix = warnings > 0 ? ` / 警告${warnings}件` : "";
+					recalcStatusEl.textContent = `${formatIso(new Date().toISOString())}: 反映 ${updated}/${changed}件（走査${scanned}件、残${remaining}件）${suffix}`;
+				}
+				if (remaining > 0) {
+					showToast(`タグ反映を実行しました（${updated}件反映、残り${remaining}件）。必要なら再実行してください。`);
+				} else {
+					showToast(`タグ反映を完了しました（${updated}件反映）`);
+				}
+				await loadSchemaAndIndexes();
+				await loadCurationQueue();
+			} catch (err) {
+				if (recalcStatusEl) recalcStatusEl.textContent = `失敗: ${err.message}`;
+				showToast(`タグ反映に失敗: ${err.message}`);
+			} finally {
+				recalcBtn.disabled = false;
+			}
+		});
+	}
+
 	const generatedAtEl = qs("#tools-tags-generated-at");
 	if (generatedAtEl) {
 		generatedAtEl.textContent = state.tagsIndex?.generated_at ? `generated_at: ${formatIso(state.tagsIndex.generated_at)}` : "-";

@@ -429,6 +429,113 @@ function normalizeYmd(value) {
   return "";
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function uniqueIds(ids) {
+  if (!Array.isArray(ids)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of ids) {
+    const id = asString(raw).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function isSameIdSet(a, b) {
+  const setA = new Set(uniqueIds(a));
+  const setB = new Set(uniqueIds(b));
+  if (setA.size !== setB.size) return false;
+  for (const id of setA) {
+    if (!setB.has(id)) return false;
+  }
+  return true;
+}
+
+function buildMergeResolver(tagById) {
+  const memo = new Map();
+  return (id) => {
+    const key = asString(id).trim();
+    if (!key) return "";
+    if (memo.has(key)) return memo.get(key);
+    const visited = new Set();
+    let current = key;
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      const tag = tagById.get(current);
+      if (!tag) break;
+      if (tag.status !== "merged") break;
+      const mergeTo = asString(tag.mergeTo).trim();
+      if (!mergeTo) break;
+      current = mergeTo;
+    }
+    memo.set(key, current);
+    return current;
+  };
+}
+
+function detectParentCycles(tagById, resolveMerge) {
+  const cycles = [];
+  const visiting = new Set();
+  const visited = new Set();
+
+  const walk = (id, stack) => {
+    if (!id) return;
+    if (visited.has(id)) return;
+    if (visiting.has(id)) {
+      const idx = stack.indexOf(id);
+      if (idx >= 0) cycles.push(stack.slice(idx).concat(id));
+      return;
+    }
+
+    visiting.add(id);
+    stack.push(id);
+
+    const parents = tagById.get(id)?.parents || [];
+    for (const parentIdRaw of parents) {
+      const parentId = resolveMerge(parentIdRaw);
+      if (!parentId) continue;
+      walk(parentId, stack);
+    }
+
+    stack.pop();
+    visiting.delete(id);
+    visited.add(id);
+  };
+
+  for (const id of tagById.keys()) {
+    walk(id, []);
+  }
+
+  return cycles;
+}
+
+function computeAncestorTagIds(tagIds, tagById, resolveMerge) {
+  const out = new Set();
+  const visited = new Set();
+  const stack = [...tagIds];
+
+  while (stack.length > 0) {
+    const current = resolveMerge(stack.pop());
+    if (!current || visited.has(current)) continue;
+    visited.add(current);
+
+    const parents = tagById.get(current)?.parents || [];
+    for (const parentRaw of parents) {
+      const parentId = resolveMerge(parentRaw);
+      if (!parentId) continue;
+      if (!out.has(parentId)) out.add(parentId);
+      stack.push(parentId);
+    }
+  }
+
+  return out;
+}
+
 function buildNotionHeaders(env) {
   const token = getEnvString(env, "NOTION_TOKEN");
   if (!token) return null;
@@ -824,6 +931,8 @@ async function handleNotionCreateTag(request, env) {
   if (!payload || typeof payload !== "object") return badRequest("invalid json");
   const name = asString(payload.name).trim();
   if (!name) return badRequest("missing name");
+  const parentIds = uniqueIds(Array.isArray(payload.parentIds) ? payload.parentIds : []);
+  const childIds = uniqueIds(Array.isArray(payload.childIds) ? payload.childIds : []);
 
   const tagsDbRes = await notionFetch(env, `/databases/${tagsDbId}`, { method: "GET" });
   if (!tagsDbRes.ok) {
@@ -833,13 +942,21 @@ async function handleNotionCreateTag(request, env) {
   const tagsProps = getTagsProps(env);
   const titleProp = pickPropertyName(tagsDb, [tagsProps.title, "タグ"], "title");
   const statusProp = pickPropertyName(tagsDb, [tagsProps.status, "状態"], "");
+  const parentsProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_PARENTS_PROP", "親タグ"), "親タグ"], "");
+  const childrenProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_CHILDREN_PROP", "子タグ"), "子タグ"], "");
+  if (parentIds.length > 0 && !parentsProp) return badRequest("親タグプロパティが見つかりません");
+  if (childIds.length > 0 && !childrenProp) return badRequest("子タグプロパティが見つかりません");
   const properties = {};
   properties[titleProp || tagsProps.title || "タグ"] = notionTitle(name);
+  if (parentsProp && parentIds.length > 0) properties[parentsProp] = notionRelation(parentIds);
+  if (childrenProp && childIds.length > 0) properties[childrenProp] = notionRelation(childIds);
 
+  let statusName = "";
   if (statusProp) {
     const statusPropSchema = tagsDb?.properties?.[statusProp] || null;
     const defaultStatusName = resolveDefaultTagStatusName(env, statusPropSchema);
     if (defaultStatusName) {
+      statusName = defaultStatusName;
       if (statusPropSchema?.type === "status") {
         properties[statusProp] = notionStatus(defaultStatusName);
       } else {
@@ -860,7 +977,19 @@ async function handleNotionCreateTag(request, env) {
     return jsonResponse({ ok: false, error: "failed to create notion tag", detail: res.data }, 500);
   }
 
-  return okResponse({ id: asString(res.data?.id), name }, 201);
+  return okResponse(
+    {
+      id: asString(res.data?.id),
+      name,
+      status: statusName || "active",
+      parents: parentIds,
+      children: childIds,
+      aliases: [],
+      merge_to: "",
+      usage_count: 0,
+    },
+    201,
+  );
 }
 
 async function handleR2Upload(request, env) {
@@ -1108,6 +1237,208 @@ async function handleImageMerge(request, env) {
   return okResponse({ mergedSources: sources.length, targetImageCount: nextImages.length });
 }
 
+async function handleTagRecalc(request, env) {
+  const worksDbId = getEnvString(env, "NOTION_WORKS_DB_ID");
+  const tagsDbId = getEnvString(env, "NOTION_TAGS_DB_ID");
+  if (!worksDbId) return serverError("NOTION_WORKS_DB_ID not configured");
+  if (!tagsDbId) return serverError("NOTION_TAGS_DB_ID not configured");
+
+  const payloadRaw = await readJson(request);
+  if (payloadRaw !== null && (typeof payloadRaw !== "object" || Array.isArray(payloadRaw))) {
+    return badRequest("invalid json");
+  }
+  const payload = payloadRaw && typeof payloadRaw === "object" ? payloadRaw : {};
+
+  const dryRun = Boolean(payload?.dryRun) || payload?.apply === false;
+  const apply = !dryRun;
+  const requestedMaxUpdates = Number(payload?.maxUpdates);
+  const configuredMaxUpdates = Number(getEnvString(env, "TAG_RECALC_MAX_UPDATES", "120"));
+  const fallbackMaxUpdates = Number.isFinite(configuredMaxUpdates) && configuredMaxUpdates > 0 ? Math.floor(configuredMaxUpdates) : 120;
+  const maxUpdates =
+    Number.isFinite(requestedMaxUpdates) && requestedMaxUpdates > 0
+      ? Math.floor(requestedMaxUpdates)
+      : apply
+        ? fallbackMaxUpdates
+        : 0;
+
+  const from = normalizeYmd(payload?.from);
+  const to = normalizeYmd(payload?.to);
+  const tagId = asString(payload?.tagId).trim();
+  const unpreparedOnly = Boolean(payload?.unpreparedOnly);
+
+  const [worksDbRes, tagsDbRes] = await Promise.all([
+    notionFetch(env, `/databases/${worksDbId}`, { method: "GET" }),
+    notionFetch(env, `/databases/${tagsDbId}`, { method: "GET" }),
+  ]);
+
+  if (!worksDbRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to fetch works database", detail: worksDbRes.data }, 500);
+  }
+  if (!tagsDbRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to fetch tags database", detail: tagsDbRes.data }, 500);
+  }
+
+  const worksDb = worksDbRes.data;
+  const tagsDb = tagsDbRes.data;
+  const worksProps = getWorksProps(env);
+  const worksTitleProp = pickPropertyName(worksDb, [worksProps.title, "作品名"], "title");
+  const worksTagsProp = pickPropertyName(worksDb, [worksProps.tags, "タグ"], "relation");
+  const worksReadyProp = pickPropertyName(worksDb, [worksProps.ready, "整備済み", "整備済"], "");
+  const worksCompletedProp = pickPropertyName(worksDb, [worksProps.completedDate, "完成日"], "date");
+  if (!worksTagsProp) return serverError("works tags relation property not found");
+
+  const tagTitleProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_TITLE_PROP", "タグ"), "タグ", "タグ名"], "title");
+  const tagStatusProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_STATUS_PROP", "状態"), "状態"], "");
+  const tagMergeToProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_MERGE_TO_PROP", "統合先"), "統合先"], "");
+  const tagParentsProp = pickPropertyName(tagsDb, [getEnvString(env, "NOTION_TAGS_PARENTS_PROP", "親タグ"), "親タグ"], "");
+  if (!tagTitleProp) return serverError("tag title property not found");
+
+  const tagsQueryRes = await queryAllDatabasePages(env, tagsDbId);
+  if (!tagsQueryRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to query tags database", detail: tagsQueryRes.data }, 500);
+  }
+
+  const tagById = new Map();
+  for (const page of tagsQueryRes.pages) {
+    const id = asString(page?.id).trim();
+    if (!id) continue;
+    const name = extractPropertyText(getPageProperty(page, tagTitleProp)).trim();
+    const status = normalizeTagStatus(extractPropertyText(getPageProperty(page, tagStatusProp)));
+    const mergeTo = tagMergeToProp ? extractRelationIds(getPageProperty(page, tagMergeToProp))[0] || "" : "";
+    const parents = tagParentsProp ? extractRelationIds(getPageProperty(page, tagParentsProp)) : [];
+    tagById.set(id, { id, name, status, mergeTo, parents });
+  }
+
+  const resolveMerge = buildMergeResolver(tagById);
+  const warnings = [];
+  const cycles = detectParentCycles(tagById, resolveMerge);
+  if (cycles.length > 0) {
+    warnings.push(`親子関係に循環が疑われます（例: ${cycles[0].join(" -> ")}）`);
+  }
+
+  let mergedIssueCount = 0;
+  for (const tag of tagById.values()) {
+    if (tag.status !== "merged") continue;
+    const mergeTo = asString(tag.mergeTo).trim();
+    if (!mergeTo) {
+      mergedIssueCount += 1;
+      if (warnings.length < 5) warnings.push(`mergedだが統合先が空: ${tag.id}`);
+      continue;
+    }
+    if (!tagById.has(mergeTo)) {
+      mergedIssueCount += 1;
+      if (warnings.length < 5) warnings.push(`統合先が存在しない: ${tag.id} -> ${mergeTo}`);
+    }
+  }
+  if (mergedIssueCount > 5) {
+    warnings.push(`merged整合性の警告が他${mergedIssueCount - 5}件あります`);
+  }
+
+  const filters = [];
+  if (unpreparedOnly && worksReadyProp) {
+    filters.push({ property: worksReadyProp, checkbox: { equals: false } });
+  }
+  if (tagId) {
+    filters.push({ property: worksTagsProp, relation: { contains: tagId } });
+  }
+  if (from && worksCompletedProp) {
+    filters.push({ property: worksCompletedProp, date: { on_or_after: from } });
+  }
+  if (to && worksCompletedProp) {
+    filters.push({ property: worksCompletedProp, date: { on_or_before: to } });
+  }
+
+  const worksQueryBody = {};
+  if (worksCompletedProp) {
+    worksQueryBody.sorts = [{ property: worksCompletedProp, direction: "descending" }];
+  }
+  if (filters.length === 1) worksQueryBody.filter = filters[0];
+  if (filters.length > 1) worksQueryBody.filter = { and: filters };
+
+  const worksQueryRes = await queryAllDatabasePages(env, worksDbId, worksQueryBody);
+  if (!worksQueryRes.ok) {
+    return jsonResponse({ ok: false, error: "failed to query works database", detail: worksQueryRes.data }, 500);
+  }
+
+  const changes = [];
+  for (const page of worksQueryRes.pages) {
+    const id = asString(page?.id).trim();
+    if (!id) continue;
+    const currentTagIds = uniqueIds(extractRelationIds(getPageProperty(page, worksTagsProp)));
+    const normalizedSet = new Set();
+    for (const tagValue of currentTagIds) {
+      const resolved = resolveMerge(tagValue);
+      if (resolved) normalizedSet.add(resolved);
+    }
+
+    const ancestorIds = computeAncestorTagIds(Array.from(normalizedSet), tagById, resolveMerge);
+    for (const ancestorId of ancestorIds) normalizedSet.add(ancestorId);
+
+    const nextTagIds = Array.from(normalizedSet);
+    if (isSameIdSet(currentTagIds, nextTagIds)) continue;
+
+    changes.push({
+      id,
+      title: worksTitleProp ? extractPropertyText(getPageProperty(page, worksTitleProp)).trim() : "",
+      completedDate: worksCompletedProp ? asString(getPageProperty(page, worksCompletedProp)?.date?.start).trim() : "",
+      before: currentTagIds,
+      after: nextTagIds,
+    });
+  }
+
+  let updated = 0;
+  if (apply) {
+    for (const change of changes) {
+      if (maxUpdates > 0 && updated >= maxUpdates) break;
+
+      const patchRes = await notionFetch(env, `/pages/${change.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          properties: {
+            [worksTagsProp]: notionRelation(change.after),
+          },
+        }),
+      });
+      if (!patchRes.ok) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: "failed to update work tags",
+            updated,
+            failed_id: change.id,
+            detail: patchRes.data,
+          },
+          500,
+        );
+      }
+
+      updated += 1;
+      if (updated < changes.length && (!maxUpdates || updated < maxUpdates)) {
+        await sleep(350);
+      }
+    }
+  }
+
+  const remaining = Math.max(0, changes.length - updated);
+  return okResponse({
+    dryRun: !apply,
+    scanned: worksQueryRes.pages.length,
+    changed: changes.length,
+    updated,
+    remaining,
+    maxUpdates: apply ? maxUpdates : 0,
+    warnings,
+    cycles: cycles.length,
+    samples: changes.slice(0, 10).map((change) => ({
+      id: change.id,
+      title: change.title,
+      completedDate: change.completedDate,
+      beforeCount: change.before.length,
+      afterCount: change.after.length,
+    })),
+  });
+}
+
 async function handleTriggerGalleryUpdate(request, env) {
   const repo = getEnvString(env, "GITHUB_REPO");
   const token = getEnvString(env, "GITHUB_TOKEN");
@@ -1314,6 +1645,10 @@ export default {
 
     if (pathname === "/admin/trigger-tags-index-update" && request.method === "POST") {
       return handleTriggerTagsIndexUpdate(request, env);
+    }
+
+    if (pathname === "/admin/tag-recalc" && request.method === "POST") {
+      return handleTagRecalc(request, env);
     }
 
     return new Response("Not found", {
