@@ -702,6 +702,25 @@ async function createTagFromUi(rawName, { parentIds = [], childIds = [] } = {}) 
 	const existingId = findExistingTagIdByName(name);
 	if (existingId) {
 		const id = resolveMergedTagId(existingId);
+		if (normalizedParentIds.length > 0 || normalizedChildIds.length > 0) {
+			const updated = await apiFetch("/admin/notion/tag", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					id,
+					addParentIds: normalizedParentIds,
+					addChildIds: normalizedChildIds,
+				}),
+			});
+			const nextParents = normalizeTagIdList(updated?.parents || [...(state.tagsById.get(id)?.parents || []), ...normalizedParentIds]);
+			const nextChildren = normalizeTagIdList(updated?.children || [...(state.tagsById.get(id)?.children || []), ...normalizedChildIds]);
+			upsertTagSearchEntry({
+				id,
+				parents: nextParents,
+				children: nextChildren,
+			});
+			syncLocalTagRelation(id, { parentIds: normalizedParentIds, childIds: normalizedChildIds });
+		}
 		return {
 			id,
 			created: false,
@@ -736,6 +755,26 @@ async function createTagFromUi(rawName, { parentIds = [], childIds = [] } = {}) 
 	});
 	syncLocalTagRelation(id, { parentIds: createdParentIds, childIds: createdChildIds });
 	return { id, created: true, parentIds: createdParentIds, childIds: createdChildIds };
+}
+
+async function addTagParentChildRelation(parentIdRaw, childIdRaw) {
+	const parentId = resolveMergedTagId(trimText(parentIdRaw));
+	const childId = resolveMergedTagId(trimText(childIdRaw));
+	if (!parentId || !childId) throw new Error("親タグ・子タグを選択してください");
+	if (parentId === childId) throw new Error("親タグと子タグに同じタグは設定できません");
+
+	await apiFetch("/admin/notion/tag", {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			parentId,
+			childId,
+		}),
+	});
+
+	syncLocalTagRelation(childId, { parentIds: [parentId] });
+	syncLocalTagRelation(parentId, { childIds: [childId] });
+	return { parentId, childId };
 }
 
 function appendCreateTagSuggest(suggestRoot, query, onCreated, { relatedTagIds = [] } = {}) {
@@ -793,6 +832,171 @@ function appendCreateTagSuggest(suggestRoot, query, onCreated, { relatedTagIds =
 			childIds: normalizedRelatedTagIds,
 		});
 	}
+}
+
+function renderPickedTagChip(root, { id, roleLabel, onClear }) {
+	root.innerHTML = "";
+	if (!id) {
+		root.appendChild(el("div", { class: "subnote", text: `${roleLabel}: 未選択` }));
+		return;
+	}
+	const name = state.tagsById.get(id)?.name || id;
+	const chip = el("span", { class: "chip" }, [el("span", { text: `${roleLabel}: ${name}` })]);
+	const remove = el("button", { type: "button", text: "×" });
+	remove.addEventListener("click", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onClear?.();
+	});
+	chip.appendChild(remove);
+	root.appendChild(chip);
+}
+
+function bindTagPickerInput({ inputEl, suggestRoot, onPick }) {
+	const renderSuggest = () => {
+		const q = trimText(inputEl.value);
+		suggestRoot.innerHTML = "";
+		if (!q) return;
+		const list = searchTags(q);
+		list.forEach((tag) => {
+			const hint = tag.status === "merged" ? "統合タグ" : tag.usage_count ? `作品数 ${tag.usage_count}` : "";
+			const item = el("div", { class: "suggest-item" }, [
+				el("span", { text: tag.name }),
+				el("span", { class: "suggest-item__hint", text: hint }),
+			]);
+			item.addEventListener("click", () => {
+				const resolvedId = resolveMergedTagId(tag.id);
+				if (!resolvedId) return;
+				onPick(resolvedId);
+				inputEl.value = state.tagsById.get(resolvedId)?.name || tag.name;
+				suggestRoot.innerHTML = "";
+			});
+			suggestRoot.appendChild(item);
+		});
+	};
+
+	inputEl.addEventListener("input", debounce(renderSuggest, 120));
+	inputEl.addEventListener("blur", () => {
+		window.setTimeout(() => {
+			suggestRoot.innerHTML = "";
+		}, 120);
+	});
+}
+
+function createTagRelationEditor({ onTagAdded }) {
+	const root = el("div", { class: "tag-relation-editor" });
+	root.appendChild(el("div", { class: "subnote", text: "タグ親子設定（タグDB）" }));
+
+	let parentTagId = "";
+	let childTagId = "";
+
+	const parentInput = el("input", { class: "input input--sm", type: "text", placeholder: "親タグを検索" });
+	const parentSuggest = el("div", { class: "suggest" });
+	const parentPicker = el("div", { class: "tag-input" }, [parentInput, parentSuggest]);
+	const parentPicked = el("div", { class: "chips" });
+
+	const childInput = el("input", { class: "input input--sm", type: "text", placeholder: "子タグを検索" });
+	const childSuggest = el("div", { class: "suggest" });
+	const childPicker = el("div", { class: "tag-input" }, [childInput, childSuggest]);
+	const childPicked = el("div", { class: "chips" });
+
+	const refreshPicked = () => {
+		renderPickedTagChip(parentPicked, {
+			id: parentTagId,
+			roleLabel: "親",
+			onClear: () => {
+				parentTagId = "";
+				parentInput.value = "";
+				refreshPicked();
+			},
+		});
+		renderPickedTagChip(childPicked, {
+			id: childTagId,
+			roleLabel: "子",
+			onClear: () => {
+				childTagId = "";
+				childInput.value = "";
+				refreshPicked();
+			},
+		});
+	};
+	refreshPicked();
+
+	bindTagPickerInput({
+		inputEl: parentInput,
+		suggestRoot: parentSuggest,
+		onPick: (id) => {
+			parentTagId = id;
+			refreshPicked();
+		},
+	});
+	bindTagPickerInput({
+		inputEl: childInput,
+		suggestRoot: childSuggest,
+		onPick: (id) => {
+			childTagId = id;
+			refreshPicked();
+		},
+	});
+
+	const addRelationBtn = el("button", { type: "button", class: "btn", text: "既存タグに親子関係を追加" });
+	addRelationBtn.addEventListener("click", async () => {
+		addRelationBtn.disabled = true;
+		try {
+			await addTagParentChildRelation(parentTagId, childTagId);
+			showToast("タグの親子関係を追加しました");
+		} catch (err) {
+			showToast(`親子関係の追加に失敗: ${err.message}`);
+		} finally {
+			addRelationBtn.disabled = false;
+		}
+	});
+
+	const createInput = el("input", { class: "input input--sm", type: "text", placeholder: "新規タグ名" });
+	const createBtn = el("button", { type: "button", class: "btn", text: "新規作成（上記親子を設定）" });
+	createBtn.addEventListener("click", async () => {
+		const name = trimText(createInput.value);
+		if (!name) {
+			showToast("新規タグ名を入力してください");
+			return;
+		}
+		createBtn.disabled = true;
+		try {
+			const result = await createTagFromUi(name, {
+				parentIds: parentTagId ? [parentTagId] : [],
+				childIds: childTagId ? [childTagId] : [],
+			});
+			const resolvedId = resolveMergedTagId(result.id);
+			if (resolvedId) onTagAdded?.(resolvedId);
+			showToast(result.created ? "タグを作成しました" : "既存タグに親子関係を追加しました");
+			createInput.value = "";
+		} catch (err) {
+			showToast(`タグ作成に失敗: ${err.message}`);
+		} finally {
+			createBtn.disabled = false;
+		}
+	});
+
+	root.appendChild(
+		el("div", { class: "tag-relation-editor__grid" }, [
+			el("div", { class: "form-row" }, [el("label", { class: "label", text: "親タグ" }), parentPicker, parentPicked]),
+			el("div", { class: "form-row" }, [el("label", { class: "label", text: "子タグ" }), childPicker, childPicked]),
+		]),
+	);
+	root.appendChild(el("div", { class: "tag-relation-editor__actions" }, [addRelationBtn]));
+	root.appendChild(
+		el("div", { class: "tag-relation-editor__actions" }, [
+			createInput,
+			createBtn,
+		]),
+	);
+	root.appendChild(
+		el("div", {
+			class: "subnote",
+			text: "親/子を選んで「既存タグに親子関係を追加」、または新規タグ名を入力して「新規作成（上記親子を設定）」を実行できます。",
+		}),
+	);
+	return root;
 }
 
 function renderTitleTagSuggest(root, { getTitle, getExplicitTagIds, onTagAdded }) {
@@ -1340,6 +1544,15 @@ function initTagInput(prefix) {
 
 	const titleTagRoot = el("div", { class: "chips" });
 	childSuggestRoot.after(titleTagRoot);
+	const relationEditor = createTagRelationEditor({
+		onTagAdded: (id) => {
+			const resolvedId = resolveMergedTagId(id);
+			if (!resolvedId) return;
+			const next = Array.from(new Set([...state.upload.explicitTagIds, resolvedId]));
+			setState(next);
+		},
+	});
+	titleTagRoot.after(relationEditor);
 
 	const refreshTitleTag = () => {
 		renderTitleTagSuggest(titleTagRoot, {
@@ -1796,6 +2009,14 @@ function renderWorkModal(work, index) {
 	const derivedNote = el("div", { class: "subnote" });
 	const childSuggest = el("div", { class: "chips" });
 	const titleTagRoot = el("div", { class: "chips" });
+	const tagRelationEditor = createTagRelationEditor({
+		onTagAdded: (id) => {
+			const resolvedId = resolveMergedTagId(id);
+			if (!resolvedId) return;
+			explicitTagIds = Array.from(new Set([...explicitTagIds, resolvedId]));
+			renderTags();
+		},
+	});
 	let explicitTagIds = Array.isArray(work.tagIds) ? [...work.tagIds] : [];
 
 	const refreshTitleTag = () => {
@@ -2053,7 +2274,7 @@ function renderWorkModal(work, index) {
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips, authorCandidateNotes]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot]),
+		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot, tagRelationEditor]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [
 			el("label", { class: "checkbox" }, [
@@ -2202,6 +2423,16 @@ function initHeaderActions() {
 }
 
 function initToolsActions() {
+	const tagEditorMount = qs("#tools-tag-relation-editor");
+	if (tagEditorMount) {
+		tagEditorMount.innerHTML = "";
+		tagEditorMount.appendChild(
+			createTagRelationEditor({
+				onTagAdded: () => {},
+			}),
+		);
+	}
+
 	const recalcStatusEl = qs("#tools-tags-recalc-status");
 	if (recalcStatusEl) recalcStatusEl.textContent = "-";
 
