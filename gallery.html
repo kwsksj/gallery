@@ -2369,6 +2369,10 @@
 				box-sizing: border-box;
 			}
 
+			[hidden] {
+				display: none !important;
+			}
+
 			html,
 			body {
 				height: 100%;
@@ -2436,6 +2440,45 @@
 				text-align: right;
 				min-width: 60px;
 				padding: 0 6px 0 0;
+			}
+
+			.viewer-actions {
+				display: flex;
+				justify-content: center;
+				padding: 0 12px 4px;
+			}
+
+			.viewer-toggle {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+				padding: 2px;
+				border: 2px solid var(--line);
+				border-radius: 999px;
+				background: var(--paper);
+			}
+
+			.viewer-toggle-button {
+				border: 0;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--subtle);
+				font-size: 12px;
+				font-weight: 800;
+				line-height: 1.2;
+				padding: 5px 10px;
+				cursor: pointer;
+				white-space: nowrap;
+			}
+
+			.viewer-toggle-button.is-active {
+				background: var(--chip-bg);
+				color: var(--chip-text);
+			}
+
+			.viewer-toggle-button:disabled {
+				opacity: 0.45;
+				cursor: default;
 			}
 
 			.filters {
@@ -2627,6 +2670,16 @@
 				gap: var(--grid-gap);
 				grid-template-columns: repeat(2, minmax(0, 1fr));
 				padding: 0 6px 20px;
+			}
+
+			.empty-message {
+				grid-column: 1 / -1;
+				text-align: center;
+				font-size: clamp(22px, 4.4vw, 34px);
+				font-weight: 800;
+				line-height: 1.8;
+				color: var(--subtle);
+				padding: 56px 12px 40px;
 			}
 
 			@media (min-width: 640px) {
@@ -2987,7 +3040,7 @@
 			}
 
 			.modal-title {
-				font-size: 14px;
+				font-size: clamp(18px, 4.8vw, 24px);
 				margin: 0 0 6px;
 			}
 
@@ -3008,13 +3061,26 @@
 			}
 
 			.modal-meta-inline {
-				display: inline-flex;
+				display: flex;
+				flex-wrap: wrap;
 				align-items: center;
+				gap: 6px;
 			}
 
 			.modal-meta-label {
 				color: var(--muted);
-				margin-right: 6px;
+				margin-right: 0;
+			}
+
+			.modal-meta-value {
+				color: var(--ink);
+				font-weight: 700;
+			}
+
+			.modal-body-meta {
+				display: grid;
+				gap: 8px;
+				margin-bottom: 10px;
 			}
 
 			.modal-body {
@@ -3094,21 +3160,31 @@
 			.chip-group {
 				display: flex;
 				flex-wrap: wrap;
+				justify-content: flex-start;
+				align-items: flex-start;
 				gap: 6px;
-				margin-bottom: 12px;
+				max-width: 100%;
+				margin: 0 0 12px;
+				padding: 0;
+				border: 0;
+				border-radius: 0;
+				background: transparent;
 			}
 
 			.chip {
-				border: none;
+				border: 2px solid var(--line);
 				background: var(--chip-bg);
 				color: var(--chip-text);
 				padding: 2px 8px;
 				border-radius: 999px;
 				font-size: 14px;
+				font-weight: 700;
 				cursor: pointer;
 				line-height: 1.3;
 				display: inline-flex;
 				align-items: center;
+				justify-content: flex-start;
+				text-align: left;
 			}
 
 			.chip--tag {
@@ -3116,6 +3192,7 @@
 				color: var(--muted);
 				border-color: var(--line-light);
 				font-size: 12px;
+				font-weight: 700;
 			}
 
 			.chip-group--header {
@@ -3126,6 +3203,7 @@
 				background: #f7f3ef;
 				color: var(--subtle);
 				border-color: var(--line-light);
+				font-weight: 700;
 			}
 
 			.caption {
@@ -3152,7 +3230,23 @@
 						<h1 class="title">生徒作品ギャラリー</h1>
 						<div class="count" id="count"></div>
 					</div>
-					<div class="filters">
+					<div class="viewer-actions" id="viewer-actions" hidden>
+						<div class="viewer-toggle" role="group" aria-label="表示切り替え">
+							<button
+								class="viewer-toggle-button"
+								id="viewer-self-button"
+								type="button"
+							></button>
+							<button
+								class="viewer-toggle-button"
+								id="viewer-all-button"
+								type="button"
+							>
+								みんなの さくひん
+							</button>
+						</div>
+					</div>
+					<div class="filters" id="filters">
 						<div class="filter-select" data-filter="tag"></div>
 						<div class="filter-row">
 							<div class="filter-select" data-filter="author"></div>
@@ -3190,6 +3284,20 @@
 				filterOptions: null,
 				starApiBase: "",
 				modalScrollY: 0,
+				studentsIndex: null,
+				studentsByStudentId: new Map(),
+				studentsByNotionId: new Map(),
+				studentsByDisplayName: new Map(),
+				studentsByNickname: new Map(),
+				animalAliasByAuthorKey: new Map(),
+				viewer: {
+					isLoggedIn: false,
+					studentId: "",
+					notionId: "",
+					displayName: "",
+					nickname: "",
+					authorKeySet: new Set(),
+				},
 			};
 
 			const els = {
@@ -3203,7 +3311,11 @@
 				filterStudio: document.querySelector(
 					'.filter-select[data-filter="studio"]',
 				),
+				filters: document.getElementById("filters"),
 				count: document.getElementById("count"),
+				viewerActions: document.getElementById("viewer-actions"),
+				viewerSelfButton: document.getElementById("viewer-self-button"),
+				viewerAllButton: document.getElementById("viewer-all-button"),
 				modal: document.getElementById("modal"),
 				modalShell: document.querySelector(".modal-shell"),
 				modalBack: document.getElementById("modal-back"),
@@ -3221,11 +3333,195 @@
 				<path d="M12 2.7l2.7 5.7 6.3.9-4.6 4.4 1.1 6.2L12 16.8 6.5 19.9l1.1-6.2L3 9.3l6.3-.9L12 2.7z"></path>
 			</svg>`;
 
+			const ANIMAL_ALIASES = [
+				"きつね",
+				"りす",
+				"うさぎ",
+				"こあら",
+				"しか",
+				"らっこ",
+				"ぺんぎん",
+				"ふくろう",
+				"しろくま",
+				"かもしか",
+				"かわうそ",
+				"ぱんだ",
+				"かば",
+				"らいちょう",
+				"ももんが",
+				"やまねこ",
+				"かぴばら",
+				"あらいぐま",
+				"はりねずみ",
+				"たぬき",
+			];
+
+			function trimText(value) {
+				return String(value || "").trim();
+			}
+
+			function splitStudentNameLabel(value) {
+				const raw = trimText(value);
+				if (!raw) return { nickname: "", realName: "" };
+				const match = raw.match(/^(.+?)\s*[|｜]\s*(.+)$/u);
+				if (!match) return { nickname: raw, realName: "" };
+				return {
+					nickname: trimText(match[1]),
+					realName: trimText(match[2]),
+				};
+			}
+
+			function normalizeAuthorId(value) {
+				const raw = trimText(value);
+				if (!raw) return "";
+				const compact = raw.replaceAll("-", "").toLowerCase();
+				if (/^[0-9a-f]{32}$/u.test(compact)) return compact;
+				return raw;
+			}
+
+			function isNotionLikeId(value) {
+				return /^[0-9a-f]{32}$/u.test(trimText(value));
+			}
+
+			function uniqueStrings(values) {
+				return Array.from(new Set(values.filter(Boolean)));
+			}
+
+			function upsertMapList(map, key, value) {
+				if (!key) return;
+				const list = map.get(key) || [];
+				list.push(value);
+				map.set(key, list);
+			}
+
+			function parseBoolLike(value) {
+				const normalized = trimText(value).toLowerCase();
+				return ["1", "true", "yes", "on"].includes(normalized);
+			}
+
+			function hashString(value) {
+				let hash = 2166136261;
+				for (const ch of String(value || "")) {
+					hash ^= ch.charCodeAt(0);
+					hash = Math.imul(hash, 16777619);
+				}
+				return hash >>> 0;
+			}
+
 			function getStarApiBase() {
 				const fromData = document.getElementById("app").dataset.starApi;
 				if (fromData) return fromData.trim();
 				if (window.STAR_API_BASE) return String(window.STAR_API_BASE).trim();
 				return "";
+			}
+
+			function getStudentsIndexUrl() {
+				const app = document.getElementById("app");
+				const fromData = trimText(app?.dataset.studentsIndexUrl);
+				if (fromData) return fromData;
+				if (window.STUDENTS_INDEX_URL)
+					return trimText(window.STUDENTS_INDEX_URL);
+				if (state.starApiBase) {
+					return `${state.starApiBase.replace(/\/$/, "")}/students-index`;
+				}
+				return "";
+			}
+
+			function readViewerContext() {
+				const params = new URLSearchParams(location.search);
+				const app = document.getElementById("app");
+				const reservationUser =
+					window.RESERVATION_USER &&
+					typeof window.RESERVATION_USER === "object"
+						? window.RESERVATION_USER
+						: {};
+
+				const readFromParams = (keys) => {
+					for (const key of keys) {
+						const value = trimText(params.get(key));
+						if (value) return value;
+					}
+					return "";
+				};
+
+				const studentId =
+					readFromParams(["student_id", "studentId", "sid", "user_id", "userId"]) ||
+					trimText(reservationUser.student_id || reservationUser.studentId) ||
+					trimText(app?.dataset.studentId) ||
+					trimText(window.RESERVATION_STUDENT_ID) ||
+					trimText(window.STUDENT_ID);
+
+				const displayName =
+					readFromParams(["display_name", "displayName", "viewer_name"]) ||
+					trimText(
+						reservationUser.display_name || reservationUser.displayName,
+					) ||
+					trimText(app?.dataset.displayName) ||
+					trimText(window.RESERVATION_DISPLAY_NAME);
+
+				const nickname =
+					readFromParams(["nickname", "nick_name", "nickName", "nick"]) ||
+					trimText(reservationUser.nickname || reservationUser.nick_name) ||
+					trimText(app?.dataset.nickname) ||
+					trimText(window.RESERVATION_NICKNAME);
+
+				const loggedInHint =
+					parseBoolLike(
+						readFromParams([
+							"logged_in",
+							"loggedIn",
+							"is_logged_in",
+							"isLoggedIn",
+						]),
+					) ||
+					parseBoolLike(
+						reservationUser.logged_in ||
+							reservationUser.loggedIn ||
+							app?.dataset.loggedIn ||
+							window.RESERVATION_LOGGED_IN,
+					);
+
+				return {
+					isLoggedIn: Boolean(studentId || loggedInHint),
+					studentId: normalizeAuthorId(studentId),
+					notionId: "",
+					displayName: trimText(displayName),
+					nickname: trimText(nickname),
+					authorKeySet: new Set(),
+				};
+			}
+
+			function findStudentRecordByAnyId(id) {
+				const normalized = normalizeAuthorId(id);
+				if (!normalized) return null;
+				return (
+					state.studentsByStudentId.get(normalized) ||
+					state.studentsByNotionId.get(normalized) ||
+					null
+				);
+			}
+
+			function mergeUniqueStudentRecords(records) {
+				const list = Array.isArray(records) ? records : [];
+				const map = new Map();
+				list.forEach((record) => {
+					const key =
+						record.notionId ||
+						record.studentId ||
+						`name:${record.displayName}:${record.nickname}`;
+					if (!key) return;
+					map.set(key, record);
+				});
+				return Array.from(map.values());
+			}
+
+			function findUniqueStudentByLabel(label) {
+				const target = trimText(label);
+				if (!target) return null;
+				const byDisplay = state.studentsByDisplayName.get(target) || [];
+				const byNickname = state.studentsByNickname.get(target) || [];
+				const unique = mergeUniqueStudentRecords([...byDisplay, ...byNickname]);
+				return unique.length === 1 ? unique[0] : null;
 			}
 
 			async function fetchGallery() {
@@ -3245,7 +3541,6 @@
 					works.sort((a, b) =>
 						(b.completed_date || "").localeCompare(a.completed_date || ""),
 					);
-					state.works = works;
 					return works;
 				} catch (e) {
 					console.error(e);
@@ -3253,16 +3548,391 @@
 				}
 			}
 
+			async function fetchStudentsIndex() {
+				const url = getStudentsIndexUrl();
+				if (!url) return null;
+				try {
+					const res = await fetch(url, { cache: "default" });
+					if (!res.ok) throw new Error("students index fetch failed");
+					const data = await res.json();
+					if (Array.isArray(data?.students)) return data;
+					if (Array.isArray(data?.data?.students)) return data.data;
+					throw new Error("invalid students index");
+				} catch (e) {
+					console.warn(e);
+					return null;
+				}
+			}
+
+			function hydrateStudentsIndex(indexData) {
+				state.studentsByStudentId.clear();
+				state.studentsByNotionId.clear();
+				state.studentsByDisplayName.clear();
+				state.studentsByNickname.clear();
+
+				const students = Array.isArray(indexData?.students)
+					? indexData.students
+					: [];
+				students.forEach((raw) => {
+					const notionId = normalizeAuthorId(raw?.notion_id || raw?.notionId);
+					const studentId = normalizeAuthorId(
+						raw?.student_id || raw?.studentId,
+					);
+					const displayNameRaw = trimText(
+						raw?.display_name || raw?.displayName || raw?.name,
+					);
+					const nicknameRaw = trimText(raw?.nickname);
+					const realNameRaw = trimText(raw?.real_name || raw?.realName);
+					const parsed = splitStudentNameLabel(displayNameRaw);
+					const realName = realNameRaw || parsed.realName;
+					const nickname = nicknameRaw || parsed.nickname || displayNameRaw;
+					const displayName =
+						displayNameRaw || nickname || realName || studentId || notionId;
+					if (!displayName && !nickname && !studentId && !notionId) return;
+
+					const record = {
+						notionId,
+						studentId,
+						displayName: trimText(displayName),
+						nickname: trimText(nickname),
+						realName: trimText(realName),
+					};
+					if (record.studentId)
+						state.studentsByStudentId.set(record.studentId, record);
+					if (record.notionId)
+						state.studentsByNotionId.set(record.notionId, record);
+					if (record.displayName)
+						upsertMapList(
+							state.studentsByDisplayName,
+							record.displayName,
+							record,
+						);
+					if (record.nickname)
+						upsertMapList(
+							state.studentsByNickname,
+							record.nickname,
+							record,
+						);
+				});
+			}
+
+			function resolveViewerContextFromIndex() {
+				if (!state.viewer.isLoggedIn) return;
+
+				let record = null;
+				if (state.viewer.studentId) {
+					record = findStudentRecordByAnyId(state.viewer.studentId);
+				}
+				if (!record && state.viewer.displayName) {
+					record = findUniqueStudentByLabel(state.viewer.displayName);
+				}
+				if (!record && state.viewer.nickname) {
+					record = findUniqueStudentByLabel(state.viewer.nickname);
+				}
+				if (!record) return;
+
+				if (!state.viewer.notionId && record.notionId) {
+					state.viewer.notionId = record.notionId;
+				}
+				if (!state.viewer.displayName && record.displayName) {
+					state.viewer.displayName = record.displayName;
+				}
+				if (!state.viewer.nickname && record.nickname) {
+					state.viewer.nickname = record.nickname;
+				}
+			}
+
+			function buildViewerAuthorKeySet() {
+				const set = new Set();
+				if (!state.viewer.isLoggedIn) return set;
+
+				const ids = uniqueStrings(
+					[state.viewer.studentId, state.viewer.notionId]
+						.map(normalizeAuthorId)
+						.filter(Boolean),
+				);
+				ids.forEach((id) => set.add(`author:id:${id}`));
+
+				const names = uniqueStrings(
+					[state.viewer.displayName, state.viewer.nickname]
+						.map(trimText)
+						.filter(Boolean),
+				);
+				names.forEach((name) => set.add(`author:name:${name}`));
+				return set;
+			}
+
+			function parseAuthorText(text) {
+				return String(text || "")
+					.split(/\s*[\/／]\s*/u)
+					.map((value) => trimText(value))
+					.filter(Boolean)
+					.map((label) => ({
+						label,
+						ids: [],
+						nickname: "",
+						realName: "",
+					}));
+			}
+
+			function collectRawAuthors(work) {
+				const out = [];
+				const pushObject = (value) => {
+					const ids = uniqueStrings(
+						[
+							value?.id,
+							value?.author_id,
+							value?.authorId,
+							value?.student_id,
+							value?.studentId,
+							value?.notion_id,
+							value?.notionId,
+						]
+							.map(normalizeAuthorId)
+							.filter(Boolean),
+					);
+					const label = trimText(
+						value?.label ||
+							value?.name ||
+							value?.display_name ||
+							value?.displayName ||
+							value?.author ||
+							value?.nickname,
+					);
+					const nickname = trimText(value?.nickname || value?.nick);
+					const realName = trimText(value?.real_name || value?.realName);
+					if (!label && ids.length === 0) return;
+					out.push({ label, ids, nickname, realName });
+				};
+
+				const collect = (value) => {
+					if (!value) return;
+					if (Array.isArray(value)) {
+						value.forEach((item) => collect(item));
+						return;
+					}
+					if (typeof value === "string") {
+						out.push(...parseAuthorText(value));
+						return;
+					}
+					if (typeof value === "object") {
+						pushObject(value);
+					}
+				};
+
+				collect(work?.authors);
+				collect(work?.author);
+
+				const idCandidates = [];
+				if (Array.isArray(work?.author_ids)) {
+					idCandidates.push(...work.author_ids);
+				}
+				if (Array.isArray(work?.authorIds)) {
+					idCandidates.push(...work.authorIds);
+				}
+				idCandidates
+					.map((id) => normalizeAuthorId(id))
+					.filter(Boolean)
+					.forEach((id) => {
+						out.push({ label: "", ids: [id], nickname: "", realName: "" });
+					});
+				const singleId = normalizeAuthorId(work?.author_id || work?.authorId);
+				if (singleId) {
+					out.push({ label: "", ids: [singleId], nickname: "", realName: "" });
+				}
+
+				return out;
+			}
+
+			function resolveAuthorRecord(rawAuthor) {
+				const ids = uniqueStrings(
+					(Array.isArray(rawAuthor?.ids) ? rawAuthor.ids : [])
+						.map(normalizeAuthorId)
+						.filter(Boolean),
+				);
+				let label = trimText(rawAuthor?.label);
+				let nickname = trimText(rawAuthor?.nickname);
+				let realName = trimText(rawAuthor?.realName);
+
+				let record = null;
+				for (const id of ids) {
+					record = findStudentRecordByAnyId(id);
+					if (record) break;
+				}
+				if (!record && label) {
+					record = findUniqueStudentByLabel(label);
+				}
+
+				if (record) {
+					if (record.notionId) ids.push(record.notionId);
+					if (record.studentId) ids.push(record.studentId);
+					if (!label && record.displayName) label = record.displayName;
+					if (!nickname && record.nickname) nickname = record.nickname;
+					if (!realName && record.realName) realName = record.realName;
+				}
+
+				const parsed = splitStudentNameLabel(label);
+				if (!nickname && parsed.nickname) nickname = parsed.nickname;
+				if (!realName && parsed.realName) realName = parsed.realName;
+				if (!label) label = nickname || realName;
+
+				const uniqueIds = uniqueStrings(ids.map(normalizeAuthorId).filter(Boolean));
+				const canonicalId =
+					normalizeAuthorId(record?.notionId) ||
+					uniqueIds.find((id) => isNotionLikeId(id)) ||
+					uniqueIds[0] ||
+					"";
+				const idKeys = uniqueIds.map((id) => `author:id:${id}`);
+				const nameKey = label ? `author:name:${label}` : "";
+				const key = canonicalId ? `author:id:${canonicalId}` : nameKey;
+				if (!key) return null;
+
+				const matchKeys = new Set(idKeys);
+				if (nameKey) matchKeys.add(nameKey);
+
+				return {
+					key,
+					label: trimText(label),
+					nickname: trimText(nickname),
+					realName: trimText(realName),
+					ids: uniqueIds,
+					matchKeys,
+				};
+			}
+
+			function buildWorkAuthorMeta(work) {
+				const rawAuthors = collectRawAuthors(work);
+				const byKey = new Map();
+				rawAuthors.forEach((rawAuthor) => {
+					const resolved = resolveAuthorRecord(rawAuthor);
+					if (!resolved) return;
+					const existing = byKey.get(resolved.key);
+					if (!existing) {
+						byKey.set(resolved.key, resolved);
+						return;
+					}
+					existing.ids = uniqueStrings([...existing.ids, ...resolved.ids]);
+					resolved.matchKeys.forEach((key) => existing.matchKeys.add(key));
+					if (!existing.label && resolved.label) existing.label = resolved.label;
+					if (!existing.nickname && resolved.nickname)
+						existing.nickname = resolved.nickname;
+					if (!existing.realName && resolved.realName)
+						existing.realName = resolved.realName;
+				});
+				return Array.from(byKey.values());
+			}
+
+			function enrichWorksWithAuthorMeta(works) {
+				return (Array.isArray(works) ? works : []).map((work) => ({
+					...work,
+					__authors: buildWorkAuthorMeta(work),
+				}));
+			}
+
+			function getWorkAuthors(work) {
+				return Array.isArray(work?.__authors) ? work.__authors : [];
+			}
+
+			function findStudentRecordForAuthor(author) {
+				for (const id of author?.ids || []) {
+					const record = findStudentRecordByAnyId(id);
+					if (record) return record;
+				}
+				return findUniqueStudentByLabel(author?.label);
+			}
+
+			function shouldMaskAuthor(author) {
+				if (state.viewer.isLoggedIn) return false;
+				const label = trimText(author?.label);
+				if (!label || Array.from(label).length !== 2) return false;
+
+				const nickname = trimText(author?.nickname);
+				if (nickname && nickname === label) return true;
+
+				const record = findStudentRecordForAuthor(author);
+				return Boolean(record && trimText(record.nickname) === label);
+			}
+
+			function getAuthorAnimalAlias(author) {
+				const key = trimText(author?.key || author?.label);
+				if (!key) return "";
+				const existing = state.animalAliasByAuthorKey.get(key);
+				if (existing) return existing;
+				const alias =
+					ANIMAL_ALIASES[hashString(key) % ANIMAL_ALIASES.length];
+				state.animalAliasByAuthorKey.set(key, alias);
+				return alias;
+			}
+
+			function getAuthorDisplayLabel(author) {
+				const base = trimText(author?.label);
+				if (!base) return "";
+				if (!shouldMaskAuthor(author)) return base;
+				return getAuthorAnimalAlias(author) || base;
+			}
+
+			function isViewerWork(work) {
+				if (!state.viewer.authorKeySet.size) return false;
+				return getWorkAuthors(work).some((author) =>
+					Array.from(author.matchKeys).some((key) =>
+						state.viewer.authorKeySet.has(key),
+					),
+				);
+			}
+
+			function splitAuthorValues(authorValue) {
+				if (!authorValue) return [];
+				if (Array.isArray(authorValue)) {
+					return Array.from(
+						new Set(
+							authorValue
+								.map((value) => trimText(value))
+								.filter(Boolean),
+						),
+					);
+				}
+				if (typeof authorValue === "string") {
+					return Array.from(
+						new Set(parseAuthorText(authorValue).map((item) => item.label)),
+					);
+				}
+				if (typeof authorValue === "object") {
+					const meta = buildWorkAuthorMeta({ author: authorValue });
+					return meta.map((author) => getAuthorDisplayLabel(author));
+				}
+				return [];
+			}
+
+			function getAuthorFilterOptionHint(option, order) {
+				const id = trimText(option.idHint);
+				if (id) {
+					const shortId = id.length > 8 ? id.slice(-4) : id;
+					return `（ID:${shortId}）`;
+				}
+				return `（${order}）`;
+			}
+
 			function buildFilterOptions(works) {
 				const tagCounts = new Map();
 				const authorCounts = new Map();
 				const studioCounts = new Map();
+
 				works.forEach((w) => {
-					splitAuthorValues(w.author).forEach((author) => {
-						authorCounts.set(author, (authorCounts.get(author) || 0) + 1);
+					getWorkAuthors(w).forEach((author) => {
+						const value = trimText(author.key);
+						if (!value) return;
+						const current = authorCounts.get(value) || {
+							value,
+							label: getAuthorDisplayLabel(author) || value,
+							idHint: author.ids[0] || "",
+							count: 0,
+						};
+						current.count += 1;
+						authorCounts.set(value, current);
 					});
-					if (w.studio)
+					if (w.studio) {
 						studioCounts.set(w.studio, (studioCounts.get(w.studio) || 0) + 1);
+					}
 					if (Array.isArray(w.tags)) {
 						w.tags.forEach((t) => {
 							if (!t) return;
@@ -3273,29 +3943,39 @@
 
 				const toList = (map) =>
 					Array.from(map.entries())
-						.map(([value, count]) => ({ value, count }))
-						.sort((a, b) => a.value.localeCompare(b.value, "ja"));
+						.map(([value, count]) => ({ value, count, label: value }))
+						.sort((a, b) => a.label.localeCompare(b.label, "ja"));
+
+				const authorList = Array.from(authorCounts.values());
+				const labelCounts = new Map();
+				authorList.forEach((item) => {
+					const label = item.label || item.value;
+					labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+				});
+				const orderByLabel = new Map();
+				authorList.forEach((item) => {
+					const label = item.label || item.value;
+					const duplicateCount = labelCounts.get(label) || 0;
+					if (duplicateCount > 1) {
+						const order = (orderByLabel.get(label) || 0) + 1;
+						orderByLabel.set(label, order);
+						item.label = `${label}${getAuthorFilterOptionHint(item, order)}`;
+					} else {
+						item.label = label;
+					}
+				});
+				authorList.sort((a, b) => a.label.localeCompare(b.label, "ja"));
 
 				return {
 					tag: toList(tagCounts),
-					author: toList(authorCounts),
+					author: authorList.map(({ value, label, count }) => ({
+						value,
+						label,
+						count,
+					})),
 					studio: toList(studioCounts),
 					total: works.length,
 				};
-			}
-
-			function splitAuthorValues(authorValue) {
-				if (!authorValue) return [];
-				const values = Array.isArray(authorValue)
-					? authorValue
-					: String(authorValue).split(/\s*[\/／]\s*/);
-				return Array.from(
-					new Set(
-						values
-							.map((v) => String(v || "").trim())
-							.filter(Boolean),
-					),
-				);
 			}
 
 			const FILTER_LABELS = {
@@ -3343,9 +4023,9 @@
 				);
 			}
 
-			function setFilterTrigger(control, value) {
+			function setFilterTrigger(control, value, displayLabel = "") {
 				if (value) {
-					control.text.textContent = value;
+					control.text.textContent = displayLabel || value;
 					control.root.classList.add("has-value");
 				} else {
 					control.text.textContent = control.label;
@@ -3357,9 +4037,9 @@
 				control.menu.innerHTML = "";
 				const items = [
 					{ value: "__all__", label: "すべて", count: total },
-					...options.map(({ value, count }) => ({
+					...options.map(({ value, label, count }) => ({
 						value,
-						label: value,
+						label: label || value,
 						count,
 					})),
 				];
@@ -3407,8 +4087,12 @@
 				let works = state.works;
 				if (type && value) {
 					works = works.filter((w) => {
-						if (type === "author")
-							return splitAuthorValues(w.author).includes(value);
+						if (type === "author") {
+							return getWorkAuthors(w).some((author) =>
+								author.matchKeys.has(value),
+							);
+						}
+						if (type === "viewer") return isViewerWork(w);
 						if (type === "studio") return w.studio === value;
 						if (type === "tag")
 							return Array.isArray(w.tags) && w.tags.includes(value);
@@ -3489,6 +4173,17 @@
 			function renderGrid(works) {
 				els.grid.innerHTML = "";
 				const fragment = document.createDocumentFragment();
+				if (!Array.isArray(works) || works.length === 0) {
+					const emptyMessage = document.createElement("p");
+					emptyMessage.className = "empty-message";
+					emptyMessage.textContent =
+						"さくひん が かんせい したら、 せんせい が さつえい して ここにならべます…";
+					fragment.appendChild(emptyMessage);
+					els.grid.appendChild(fragment);
+					els.grid.hidden = false;
+					requestAnimationFrame(() => applyGridCentering());
+					return;
+				}
 
 				const monthCounts = buildMonthCounts(works);
 				const MONTH_MARKER_MIN = 6;
@@ -3569,14 +4264,7 @@
 					titleRow.appendChild(title);
 					titleRow.appendChild(starRow);
 
-					const meta = document.createElement("div");
-					meta.className = "card-meta";
-					meta.textContent = w.completed_date
-						? `完成日 ${w.completed_date}`
-						: "";
-
 					body.appendChild(titleRow);
-					// body.appendChild(meta);
 
 					card.appendChild(thumb);
 					card.appendChild(body);
@@ -3651,7 +4339,11 @@
 				const params = new URLSearchParams(location.search);
 				const type = params.get("filter") || "";
 				const value = params.get("value") || "";
-				if (type && value && ["tag", "author", "studio"].includes(type)) {
+				if (
+					type &&
+					value &&
+					["tag", "author", "studio", "viewer"].includes(type)
+				) {
 					state.filter = { type, value };
 				}
 			}
@@ -3667,6 +4359,60 @@
 				}
 				const newUrl = `${location.pathname}?${params.toString()}`;
 				history.replaceState(null, "", newUrl.replace(/\?$/, ""));
+			}
+
+			function findFilterOptionLabel(options, value) {
+				const item = (Array.isArray(options) ? options : []).find(
+					(option) => option.value === value,
+				);
+				return item?.label || "";
+			}
+
+			function getAuthorLabelForChip(author) {
+				const fromOption = findFilterOptionLabel(
+					state.filterOptions?.author || [],
+					author?.key,
+				);
+				return fromOption || getAuthorDisplayLabel(author);
+			}
+
+			function getViewerSelfLabel() {
+				const name =
+					trimText(state.viewer.displayName) || trimText(state.viewer.nickname);
+				if (name) return `${name}さんの さくひん`;
+				return "あなたの さくひん";
+			}
+
+			function updateViewerActions() {
+				if (
+					!els.viewerActions ||
+					!els.viewerSelfButton ||
+					!els.viewerAllButton ||
+					!els.filters
+				) {
+					return;
+				}
+
+				if (!state.viewer.isLoggedIn) {
+					els.viewerActions.hidden = true;
+					els.filters.hidden = false;
+					return;
+				}
+
+				els.viewerActions.hidden = false;
+				els.viewerSelfButton.textContent = getViewerSelfLabel();
+
+				const isSelfView =
+					state.filter.type === "viewer" && state.filter.value === "self";
+				els.viewerSelfButton.classList.toggle("is-active", isSelfView);
+				els.viewerAllButton.classList.toggle("is-active", !isSelfView);
+				els.viewerSelfButton.setAttribute("aria-pressed", isSelfView ? "true" : "false");
+				els.viewerAllButton.setAttribute("aria-pressed", !isSelfView ? "true" : "false");
+
+				if (isSelfView) {
+					closeAllFilterMenus();
+				}
+				els.filters.hidden = isSelfView;
 			}
 
 			function syncFilterControls(options) {
@@ -3696,9 +4442,22 @@
 					selectedStudio,
 				);
 
-				setFilterTrigger(filterControls.tag, selectedTag);
-				setFilterTrigger(filterControls.author, selectedAuthor);
-				setFilterTrigger(filterControls.studio, selectedStudio);
+				setFilterTrigger(
+					filterControls.tag,
+					selectedTag,
+					findFilterOptionLabel(options.tag, selectedTag),
+				);
+				setFilterTrigger(
+					filterControls.author,
+					selectedAuthor,
+					findFilterOptionLabel(options.author, selectedAuthor),
+				);
+				setFilterTrigger(
+					filterControls.studio,
+					selectedStudio,
+					findFilterOptionLabel(options.studio, selectedStudio),
+				);
+				updateViewerActions();
 			}
 
 			function setActiveFilter(type, value, resetScroll = false) {
@@ -3708,7 +4467,9 @@
 					state.filter = { type, value };
 				}
 				writeFilterToUrl();
-				syncFilterControls(state.filterOptions);
+				if (state.filterOptions) {
+					syncFilterControls(state.filterOptions);
+				}
 				applyFilter(resetScroll);
 			}
 
@@ -3858,44 +4619,65 @@
 				titleRow.appendChild(title);
 				titleRow.appendChild(starRow);
 
-				const meta = document.createElement("div");
-				meta.className = "modal-meta";
-				const metaParts = [];
-				if (work.completed_date)
-					metaParts.push(`完成日 ${work.completed_date}`);
-				meta.textContent = metaParts.join(" ・ ");
-
 				header.appendChild(titleRow);
 
-				const headerMeta = document.createElement("div");
-				headerMeta.className = "modal-meta-line";
-				const authors = splitAuthorValues(work.author);
+				const body = document.createElement("div");
+				body.className = "modal-body";
+				const bodyMeta = document.createElement("div");
+				bodyMeta.className = "modal-body-meta";
+
+				const authors = getWorkAuthors(work);
 				if (authors.length > 0) {
-					const authorInline = document.createElement("span");
+					const authorInline = document.createElement("div");
 					authorInline.className = "modal-meta-inline";
 					const authorLabel = document.createElement("span");
 					authorLabel.className = "modal-meta-label";
 					authorLabel.textContent = "作者";
 					authorInline.appendChild(authorLabel);
 					authors.forEach((author) => {
-						authorInline.appendChild(makeChip("author", author, true, ""));
+						authorInline.appendChild(
+							makeChip("author", author.key, true, getAuthorLabelForChip(author)),
+						);
 					});
-					headerMeta.appendChild(authorInline);
+					bodyMeta.appendChild(authorInline);
 				}
+
+				if (work.completed_date) {
+					const completedInline = document.createElement("div");
+					completedInline.className = "modal-meta-inline";
+					const completedLabel = document.createElement("span");
+					completedLabel.className = "modal-meta-label";
+					completedLabel.textContent = "完成日";
+					const completedValue = document.createElement("span");
+					completedValue.className = "modal-meta-value";
+					completedValue.textContent = work.completed_date;
+					completedInline.appendChild(completedLabel);
+					completedInline.appendChild(completedValue);
+					bodyMeta.appendChild(completedInline);
+				}
+
 				if (work.studio) {
-					headerMeta.appendChild(makeChip("studio", work.studio, true, ""));
+					const studioInline = document.createElement("div");
+					studioInline.className = "modal-meta-inline";
+					const studioLabel = document.createElement("span");
+					studioLabel.className = "modal-meta-label";
+					studioLabel.textContent = "教室名";
+					const studioValue = document.createElement("span");
+					studioValue.className = "modal-meta-value";
+					studioValue.textContent = work.studio;
+					studioInline.appendChild(studioLabel);
+					studioInline.appendChild(studioValue);
+					bodyMeta.appendChild(studioInline);
 				}
-				if (headerMeta.children.length) header.appendChild(headerMeta);
 
-				header.appendChild(meta);
-
-				const body = document.createElement("div");
-				body.className = "modal-body";
+				if (bodyMeta.children.length) body.appendChild(bodyMeta);
 
 				const chips = document.createElement("div");
 				chips.className = "chip-group";
 				if (Array.isArray(work.tags)) {
-					work.tags.forEach((t) => chips.appendChild(makeChip("tag", t)));
+					work.tags.forEach((t) =>
+						chips.appendChild(makeChip("tag", t, false, t)),
+					);
 				}
 
 				const caption = document.createElement("div");
@@ -3959,11 +4741,11 @@
 				setTimeout(() => updateModalImageMaxHeight(body), 100);
 			}
 
-			function makeChip(type, value, subtle = false, prefixOverride = null) {
+			function makeChip(type, value, subtle = false, label = "") {
 				const chip = document.createElement("button");
 				chip.className = `chip${type === "tag" ? " chip--tag" : ""}${subtle ? " chip--meta" : ""}`;
 				chip.type = "button";
-				chip.textContent = `${value}`;
+				chip.textContent = label || `${value}`;
 				chip.addEventListener("click", () => {
 					setActiveFilter(type, value, true);
 					closeModal({ resetScroll: true });
@@ -4030,6 +4812,12 @@
 				document.addEventListener("visibilitychange", () => {
 					if (document.hidden) closeAllFilterMenus();
 				});
+				els.viewerSelfButton?.addEventListener("click", () => {
+					setActiveFilter("viewer", "self", true);
+				});
+				els.viewerAllButton?.addEventListener("click", () => {
+					setActiveFilter("", "", true);
+				});
 				els.modalBack.addEventListener("click", closeModal);
 				els.modalShell.addEventListener("click", (e) => {
 					if (e.target === els.modalShell) closeModal();
@@ -4057,17 +4845,40 @@
 				if (!state.starApiBase) {
 					state.starsAvailable = false;
 				}
-				const works = await fetchGallery();
-				if (!works) {
+				state.viewer = readViewerContext();
+
+				const [worksRaw, studentsIndex] = await Promise.all([
+					fetchGallery(),
+					fetchStudentsIndex(),
+				]);
+
+				if (!worksRaw) {
 					els.loading.hidden = true;
 					els.error.hidden = false;
 					return;
 				}
+
+				if (studentsIndex) {
+					state.studentsIndex = studentsIndex;
+					hydrateStudentsIndex(studentsIndex);
+				}
+				resolveViewerContextFromIndex();
+				state.viewer.authorKeySet = buildViewerAuthorKeySet();
+
+				const works = enrichWorksWithAuthorMeta(worksRaw);
+				state.works = works;
+
 				els.loading.hidden = true;
 				els.error.hidden = true;
 
 				state.filterOptions = buildFilterOptions(works);
 				readFilterFromUrl();
+				if (!state.filter.type && state.viewer.isLoggedIn) {
+					state.filter = { type: "viewer", value: "self" };
+				}
+				if (state.filter.type === "viewer") {
+					state.filter.value = "self";
+				}
 				initFilterControls();
 				syncFilterControls(state.filterOptions);
 				bindEvents();
