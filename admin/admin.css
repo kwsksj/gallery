@@ -136,7 +136,7 @@ select.input[multiple] option {
 }
 
 .author-select-native {
-	display: none !important;
+	display: none;
 }
 
 .author-picker {

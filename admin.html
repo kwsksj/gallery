@@ -120,12 +120,12 @@
 
 						<div class="form-grid">
 							<div class="form-row">
-								<div class="label">作者</div>
+								<div id="upload-author-label" class="label">作者</div>
 								<select id="upload-author" class="input author-select-native" multiple size="6" hidden aria-hidden="true"></select>
 								<div class="subnote">
 									候補ボタン + 名簿検索で複数選択できます。表示は「ニックネーム｜本名」です。
 								</div>
-								<div class="author-picker">
+								<div class="author-picker" role="group" aria-labelledby="upload-author-label">
 									<div id="upload-author-selected" class="chips" aria-label="選択中の作者" hidden></div>
 									<div id="upload-author-candidate-notes" class="candidate-notes" hidden></div>
 									<div class="author-picker__search">

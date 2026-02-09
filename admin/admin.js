@@ -1307,13 +1307,15 @@ function bindAuthorSearchInput({ inputEl, resultsRoot, selectEl, onPicked = null
 						seen.add(notionId);
 						hits.push(record);
 					}
-				} catch {
-					// noop
+				} catch (err) {
+					console.error("Author remote search failed:", err);
 				}
 			}
 
 			render(hits);
-		})().catch(() => {});
+		})().catch((err) => {
+			console.error("Author search failed:", err);
+		});
 	}, 200);
 
 	inputEl.addEventListener("input", run);
@@ -2458,12 +2460,14 @@ function renderWorkModal(work, index) {
 		}
 	});
 
+	const modalAuthorLabelId = `curation-author-label-${index}`;
+
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
 		el("div", { class: "form-row" }, [
-			el("label", { class: "label", text: "作者" }),
+			el("div", { id: modalAuthorLabelId, class: "label", text: "作者" }),
 			authorSelect,
-			el("div", { class: "author-picker" }, [
+			el("div", { class: "author-picker", role: "group", "aria-labelledby": modalAuthorLabelId }, [
 				authorSelected,
 				authorCandidateNotes,
 				el("div", { class: "author-picker__search" }, [
