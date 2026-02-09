@@ -160,6 +160,42 @@ select.input[multiple] option {
 	padding: 10px 10px;
 }
 
+.tag-relation-editor {
+	margin-top: 10px;
+	padding: 10px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: #fff;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.tag-relation-editor__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.tag-relation-editor__grid .form-row {
+	margin: 0;
+}
+
+.tag-relation-editor__grid .label {
+	margin-bottom: 4px;
+}
+
+.tag-relation-editor__actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.tag-relation-editor__actions .input {
+	flex: 1 1 220px;
+}
+
 .image-viewer {
 	display: grid;
 	grid-template-columns: 320px 1fr;
@@ -258,6 +294,10 @@ select.input[multiple] option {
 
 @media (max-width: 840px) {
 	.image-viewer {
+		grid-template-columns: 1fr;
+	}
+
+	.tag-relation-editor__grid {
 		grid-template-columns: 1fr;
 	}
 }
