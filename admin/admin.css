@@ -104,6 +104,35 @@ select.input[multiple] option {
 	padding: 4px 6px;
 }
 
+.candidate-notes {
+	margin-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.candidate-note {
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: #fff;
+	padding: 8px 10px;
+}
+
+.candidate-note__name {
+	font-size: 12px;
+	font-weight: 600;
+	color: #2f2f2f;
+	line-height: 1.4;
+}
+
+.candidate-note__text {
+	margin-top: 2px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--muted);
+	white-space: pre-wrap;
+}
+
 .tag-input {
 	position: relative;
 }
