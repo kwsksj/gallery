@@ -2355,6 +2355,11 @@
 				--line-light: #e8ddd6;
 				--accent: #c86f34;
 				--accent-2: #5a8c36;
+				--toggle-track: #e8ddd6;
+				--toggle-text: #4e342e;
+				--toggle-pill-height: 42px;
+				--toggle-button-height: 34px;
+				--group-title-chip-bg: rgba(48, 34, 27, 0.56);
 				--chip-bg: #e4cdba;
 				--chip-text: #4e342e;
 				--shadow: 4px 4px 4px rgba(90, 60, 40, 0.08);
@@ -2470,43 +2475,86 @@
 				white-space: nowrap;
 			}
 
+			.controls-row {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: end;
+				gap: 6px;
+			}
+
 			.viewer-actions {
 				display: flex;
 				justify-content: flex-start;
 				padding: 0;
+				flex: 1 1 320px;
+				min-width: 220px;
+			}
+
+			.viewer-toggle,
+			.pill-toggle {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+				padding: 4px;
+				min-height: var(--toggle-pill-height);
+				border-radius: 999px;
+				background: var(--toggle-track);
 			}
 
 			.viewer-toggle {
-				display: inline-flex;
-				align-items: center;
-				gap: 2px;
-				padding: 2px;
-				border: 1px solid var(--line);
-				border-radius: 999px;
-				background: var(--paper);
+				width: 100%;
+				flex-wrap: wrap;
 			}
 
-			.viewer-toggle-button {
+			.pill-toggle {
+				width: 100%;
+				flex-wrap: wrap;
+			}
+
+			.viewer-toggle .viewer-toggle-button,
+			.pill-toggle .pill-toggle-button {
 				border: 0;
 				border-radius: 999px;
 				background: transparent;
-				color: var(--subtle);
-				font-size: 11px;
+				color: var(--toggle-text);
+				font-size: 14px;
 				font-weight: 800;
 				line-height: 1.2;
-				padding: 6px 10px;
+				padding: 7px 10px;
 				cursor: pointer;
 				white-space: nowrap;
+				min-height: var(--toggle-button-height);
+				transition:
+					background-color 0.18s ease,
+					color 0.18s ease-in-out;
 			}
 
-			.viewer-toggle-button.is-active {
-				background: var(--chip-bg);
-				color: var(--chip-text);
+			.viewer-toggle .viewer-toggle-button {
+				flex: 1 1 auto;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 
-			.viewer-toggle-button:disabled {
+			.pill-toggle .pill-toggle-button {
+				flex: 1 1 auto;
+			}
+
+			.viewer-toggle .viewer-toggle-button.is-active,
+			.pill-toggle .pill-toggle-button.is-active {
+				background: var(--accent);
+				color: #fff;
+			}
+
+			.viewer-toggle .viewer-toggle-button:disabled,
+			.pill-toggle .pill-toggle-button:disabled {
 				opacity: 0.45;
 				cursor: default;
+			}
+
+			.viewer-toggle .viewer-toggle-button:active,
+			.pill-toggle .pill-toggle-button:active {
+				transform: none;
 			}
 
 			.filter-bar {
@@ -2514,13 +2562,15 @@
 				flex-wrap: wrap;
 				align-items: end;
 				gap: 6px;
+				flex: 2 1 560px;
+				min-width: 220px;
 			}
 
 			.filters {
 				display: grid;
 				gap: 6px;
 				padding: 0;
-				flex: 1 1 calc(50% - 3px);
+				flex: 1 1 260px;
 				min-width: 0;
 			}
 
@@ -2536,79 +2586,105 @@
 				padding-left: 2px;
 			}
 
-			.filter-selected-group {
-				width: 100%;
-				border-radius: 8px;
-				border: 1px solid var(--line);
-				font-size: 13px;
-				min-height: 34px;
-				padding: 6px 10px;
-				background: var(--paper);
-				color: var(--ink);
-				font-weight: 700;
-				display: flex;
+			.filter-type .filter-selected-group {
+				width: fit-content;
+				max-width: 100%;
+				border: 0;
+				border-radius: 999px;
+				font-size: 14px;
+				min-height: var(--toggle-pill-height);
+				padding: 4px 14px;
+				background: var(--toggle-track);
+				color: var(--toggle-text);
+				font-weight: 800;
+				display: inline-flex;
 				align-items: center;
+				justify-content: center;
+				justify-self: start;
+				text-align: center;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				cursor: pointer;
+			}
+
+			.group-sort {
+				display: flex;
+				align-items: stretch;
+				gap: 6px;
+				padding: 0;
+				flex: 1 1 320px;
+				min-width: 0;
+			}
+
+			.group-sort-toggle {
+				flex: 1 1 220px;
+				min-width: 0;
+			}
+
+			.group-selected-value {
+				width: fit-content;
+				max-width: min(100%, 320px);
+				min-width: 0;
+				border: 0;
+				border-radius: 999px;
+				background: var(--group-title-chip-bg);
+				color: #fff;
+				font-size: 14px;
+				font-weight: 800;
+				min-height: var(--toggle-pill-height);
+				padding: 4px 14px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
 				overflow: hidden;
 				text-overflow: ellipsis;
 				white-space: nowrap;
 			}
 
-			.group-sort {
-				display: grid;
-				gap: 4px;
-				padding: 0;
-				flex: 1 1 calc(50% - 3px);
-				min-width: 0;
-			}
-
-			.group-sort-select {
-				width: 100%;
-			}
-
 			.group-back-button {
-				width: 100%;
-				border: 1px solid var(--line);
-				border-radius: 8px;
-				background: var(--paper);
-				color: var(--subtle);
-				font-size: 12px;
-				font-weight: 700;
-				min-height: 34px;
-				padding: 5px 10px;
+				width: fit-content;
+				max-width: 100%;
+				border: 0;
+				border-radius: 999px;
+				background: var(--toggle-track);
+				color: var(--toggle-text);
+				font-size: 14px;
+				font-weight: 800;
+				min-height: var(--toggle-pill-height);
+				padding: 4px 14px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				white-space: nowrap;
+				cursor: pointer;
 			}
 
 			@media (min-width: 900px) {
 				.header-inner {
-					grid-template-columns: auto auto;
-					align-items: end;
+					grid-template-columns: 1fr;
+					align-items: stretch;
 				}
 
 				.title-row {
-					grid-column: 1 / -1;
+					grid-column: auto;
 				}
 
 				.viewer-actions {
-					grid-column: 1 / 2;
-					align-self: center;
-				}
-
-				.filter-bar {
-					grid-column: 2 / 3;
-					justify-self: end;
-					gap: 8px;
-					width: min(560px, 100%);
+					flex: 1 1 360px;
+					align-self: stretch;
 				}
 
 				.filters {
-					flex: 0 1 280px;
+					flex: 1 1 300px;
 				}
 
 				.group-sort {
-					flex: 0 1 220px;
+					flex: 1 1 320px;
 				}
 
-				.group-back-button {
-					padding: 6px 12px;
+				.filter-type .filter-selected-group {
+					padding: 4px 14px;
 				}
 			}
 
@@ -2824,11 +2900,6 @@
 				cursor: pointer;
 				display: flex;
 				flex-direction: column;
-				transition: transform 0.2s ease;
-			}
-
-			.card:hover {
-				transform: translateY(-4px);
 			}
 
 			.thumb {
@@ -2851,15 +2922,37 @@
 				position: absolute;
 				right: 6px;
 				bottom: 6px;
-				padding: 3px 7px;
+				padding: 3px 7px 4px;
 				border-radius: 999px;
-				background: rgba(36, 28, 20, 0.8);
+				background: #785a4e82;
 				color: #fff;
-				font-size: 10px;
-				font-weight: 700;
+				font-size: 13px;
+				font-weight: 400;
 				line-height: 1;
 				font-variant-numeric: tabular-nums;
 				backdrop-filter: blur(2px);
+			}
+
+			.group-title-badge {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				transform: translate(-50%, -50%);
+				width: calc(100% - 20px);
+				max-width: calc(100% - 20px);
+				padding: 10px 12px;
+				border-radius: 999px;
+				background: var(--group-title-chip-bg);
+				color: #fff;
+				font-size: clamp(14px, 2.4vw, 24px);
+				font-weight: 700;
+				line-height: 1.3;
+				white-space: normal;
+				word-break: keep-all;
+				overflow-wrap: anywhere;
+				text-align: center;
+				backdrop-filter: blur(2px);
+				pointer-events: none;
 			}
 
 			.image-count-badge {
@@ -3387,43 +3480,73 @@
 						<h1 class="title" id="gallery-title">生徒作品ギャラリー</h1>
 						<div class="count" id="count"></div>
 					</div>
-					<div class="viewer-actions" id="viewer-actions" hidden>
-						<div class="viewer-toggle" role="group" aria-label="表示切り替え">
-							<button
-								class="viewer-toggle-button"
-								id="viewer-self-button"
-								type="button"
-							></button>
-							<button
-								class="viewer-toggle-button"
-								id="viewer-all-button"
-								type="button"
-							>
-								みんなの さくひん
-							</button>
-						</div>
-					</div>
-					<div class="filter-bar">
-						<div class="filters" id="filters">
-							<div class="filter-type">
-								<label class="filter-type-label" for="filter-type-select">さくいん</label>
-								<select id="filter-type-select">
-									<option value="">全作品</option>
-									<option value="tag">キーワード</option>
-									<option value="author">作者</option>
-									<option value="studio">教室</option>
-								</select>
-								<div class="filter-selected-group" id="filter-selected-group" hidden></div>
+					<div class="controls-row">
+						<div class="viewer-actions" id="viewer-actions" hidden>
+							<div class="viewer-toggle" role="group" aria-label="表示切り替え">
+								<button
+									class="viewer-toggle-button"
+									id="viewer-self-button"
+									type="button"
+								></button>
+								<button
+									class="viewer-toggle-button"
+									id="viewer-all-button"
+									type="button"
+								>
+									みんな
+								</button>
 							</div>
 						</div>
-						<div class="group-sort" id="group-sort" hidden>
-							<select class="group-sort-select" id="group-sort-select" aria-label="カードの並び順">
-								<option value="count">作品数順</option>
-								<option value="alpha">アルファベット順</option>
-							</select>
-							<button class="group-back-button" id="group-back-button" type="button" hidden>
-								一覧に戻る
-							</button>
+						<div class="filter-bar">
+							<div class="filters" id="filters">
+								<div class="filter-type">
+									<div class="filter-type-label"></div>
+									<div class="pill-toggle filter-type-toggle" id="filter-type-toggle" role="group" aria-label="さくいん">
+										<button class="pill-toggle-button" data-filter-type="" type="button" aria-pressed="true">
+											全作品
+										</button>
+										<button class="pill-toggle-button" data-filter-type="tag" type="button" aria-pressed="false">
+											キーワード
+										</button>
+										<button class="pill-toggle-button" data-filter-type="author" type="button" aria-pressed="false">
+											作者
+										</button>
+										<button class="pill-toggle-button" data-filter-type="studio" type="button" aria-pressed="false">
+											教室
+										</button>
+									</div>
+									<button class="filter-selected-group" id="filter-selected-group" type="button" hidden></button>
+								</div>
+							</div>
+							<div class="group-sort" id="group-sort" hidden>
+								<div
+									class="pill-toggle group-sort-toggle"
+									id="group-sort-toggle"
+									role="group"
+									aria-label="カードの並び順"
+								>
+									<button
+										class="pill-toggle-button"
+										data-group-sort="count"
+										type="button"
+										aria-pressed="true"
+									>
+										作品数順
+									</button>
+									<button
+										class="pill-toggle-button"
+										data-group-sort="alpha"
+										type="button"
+										aria-pressed="false"
+									>
+										アルファベット順
+									</button>
+								</div>
+								<div class="group-selected-value" id="group-selected-value" hidden></div>
+								<button class="group-back-button" id="group-back-button" type="button" hidden>
+									一覧にもどる
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -3488,11 +3611,12 @@
 				error: document.getElementById("error"),
 				grid: document.getElementById("grid"),
 				title: document.getElementById("gallery-title"),
-				filterTypeSelect: document.getElementById("filter-type-select"),
+				filterTypeToggle: document.getElementById("filter-type-toggle"),
 				filterSelectedGroup: document.getElementById("filter-selected-group"),
 				filters: document.getElementById("filters"),
 				groupSort: document.getElementById("group-sort"),
-				groupSortSelect: document.getElementById("group-sort-select"),
+				groupSortToggle: document.getElementById("group-sort-toggle"),
+				groupSelectedValue: document.getElementById("group-selected-value"),
 				groupBackButton: document.getElementById("group-back-button"),
 				count: document.getElementById("count"),
 				viewerActions: document.getElementById("viewer-actions"),
@@ -3503,6 +3627,13 @@
 				modalBack: document.getElementById("modal-back"),
 				modalContent: document.getElementById("modal-content"),
 			};
+
+			els.filterTypeButtons = Array.from(
+				els.filterTypeToggle?.querySelectorAll("button[data-filter-type]") || [],
+			);
+			els.groupSortButtons = Array.from(
+				els.groupSortToggle?.querySelectorAll("button[data-group-sort]") || [],
+			);
 
 			const PLACEHOLDER =
 				"data:image/svg+xml;utf8," +
@@ -4322,49 +4453,74 @@
 				return isGroupFilterType(state.filter.type) && Boolean(state.filter.value);
 			}
 
+			function getSelectedGroupFilterLabel() {
+				const type = state.filter.type;
+				const value = state.filter.value;
+				if (!isGroupFilterType(type) || !value) return "";
+				return findFilterOptionLabel(state.filterOptions?.[type] || [], value) || value;
+			}
+
 			function syncFilterTypeSwitch() {
-				if (!els.filterTypeSelect) return;
-				if (isGroupFilterType(state.filter.type)) {
-					els.filterTypeSelect.value = state.filter.type;
-					return;
-				}
-				els.filterTypeSelect.value = "";
+				if (!els.filterTypeButtons?.length) return;
+				const currentType = isGroupFilterType(state.filter.type) ? state.filter.type : "";
+				els.filterTypeButtons.forEach((button) => {
+					const buttonType = trimText(button.dataset.filterType);
+					const isActive = buttonType === currentType;
+					button.classList.toggle("is-active", isActive);
+					button.setAttribute("aria-pressed", isActive ? "true" : "false");
+				});
+			}
+
+			function syncGroupSortSwitch() {
+				if (!els.groupSortButtons?.length) return;
+				const currentSort = state.groupSort === "alpha" ? "alpha" : "count";
+				els.groupSortButtons.forEach((button) => {
+					const buttonSort = trimText(button.dataset.groupSort);
+					const isActive = buttonSort === currentSort;
+					button.classList.toggle("is-active", isActive);
+					button.setAttribute("aria-pressed", isActive ? "true" : "false");
+				});
 			}
 
 			function updateSelectedGroupLabel() {
-				if (!els.filterTypeSelect || !els.filterSelectedGroup) return;
-				const showSelected = hasSelectedGroupFilterValue();
-				els.filterTypeSelect.hidden = showSelected;
-				els.filterSelectedGroup.hidden = !showSelected;
-				if (!showSelected) {
-					els.filterSelectedGroup.textContent = "";
-					return;
-				}
-				const type = state.filter.type;
-				const value = state.filter.value;
-				const label =
-					findFilterOptionLabel(state.filterOptions?.[type] || [], value) || value;
-				els.filterSelectedGroup.textContent = label;
+				if (!els.filterTypeToggle || !els.filterSelectedGroup) return;
+				els.filterTypeToggle.hidden = false;
+				els.filterSelectedGroup.hidden = true;
+				els.filterSelectedGroup.textContent = "";
 			}
 
 			function updateGroupSortVisibility() {
-				const showSort = isGroupingMode();
-				const showBack = hasSelectedGroupFilterValue();
+				const isGroupFilter = isGroupFilterType(state.filter.type);
+				const showSelected = hasSelectedGroupFilterValue();
+				const showSort = isGroupFilter && !showSelected;
 
 				if (els.groupSort) {
-					els.groupSort.hidden = !(showSort || showBack);
+					els.groupSort.hidden = !isGroupFilter;
 				}
-				if (els.groupSortSelect) {
-					els.groupSortSelect.hidden = !showSort;
+				if (els.groupSortToggle) {
+					els.groupSortToggle.hidden = !showSort;
 					if (showSort) {
-						els.groupSortSelect.value = state.groupSort;
+						syncGroupSortSwitch();
+					}
+				}
+				if (els.groupSelectedValue) {
+					els.groupSelectedValue.hidden = !showSelected;
+					if (showSelected) {
+						const selectedLabel = getSelectedGroupFilterLabel();
+						els.groupSelectedValue.textContent = selectedLabel;
+						if (selectedLabel) {
+							els.groupSelectedValue.title = selectedLabel;
+						} else {
+							els.groupSelectedValue.removeAttribute("title");
+						}
+					} else {
+						els.groupSelectedValue.textContent = "";
+						els.groupSelectedValue.removeAttribute("title");
 					}
 				}
 				if (els.groupBackButton) {
-					els.groupBackButton.hidden = !showBack;
-					if (showBack) {
-						els.groupBackButton.textContent = "一覧に戻る";
-					}
+					els.groupBackButton.hidden = !showSelected;
+					els.groupBackButton.textContent = "一覧にもどる";
 				}
 			}
 
@@ -4479,15 +4635,13 @@
 					badge.textContent = `${group.count}作品`;
 					thumb.appendChild(badge);
 
-					const body = document.createElement("div");
-					body.className = "card-body";
-					const title = document.createElement("p");
-					title.className = "card-title";
-					title.textContent = group.label;
-					body.appendChild(title);
+					const titleBadge = document.createElement("span");
+					titleBadge.className = "group-title-badge";
+					titleBadge.textContent = group.label;
+					titleBadge.title = group.label;
+					thumb.appendChild(titleBadge);
 
 					card.appendChild(thumb);
-					card.appendChild(body);
 					card.addEventListener("click", () =>
 						setActiveFilter(type, group.value, true),
 					);
@@ -4602,7 +4756,7 @@
 					const emptyMessage = document.createElement("p");
 					emptyMessage.className = "empty-message";
 					emptyMessage.textContent =
-						"さくひん が かんせい したら、 せんせい が さつえい して ここにならべます…";
+						"さくひん が かんせい したら、 しゃしん を とって ここに ならべます！";
 					fragment.appendChild(emptyMessage);
 					els.grid.appendChild(fragment);
 					els.grid.hidden = false;
@@ -4610,40 +4764,44 @@
 					return;
 				}
 
-				const monthCounts = buildMonthCounts(works);
-				const MONTH_MARKER_MIN = 6;
-				const yearMonthMarkerFlags = buildYearMonthMarkerFlags(
-					monthCounts,
-					MONTH_MARKER_MIN,
-				);
+				const showDateMarkers = !state.filter.type;
+				let yearMonthMarkerFlags = new Map();
+				if (showDateMarkers) {
+					const monthCounts = buildMonthCounts(works);
+					const MONTH_MARKER_MIN = 6;
+					yearMonthMarkerFlags = buildYearMonthMarkerFlags(
+						monthCounts,
+						MONTH_MARKER_MIN,
+					);
+				}
 				let lastYear = "";
 				let lastMonth = "";
 				let lastSection = "";
 
 				works.forEach((w) => {
-					const { year, month } = parseYearMonth(w.completed_date);
-					if (!year) {
-						if (lastSection !== "unknown") {
-							fragment.appendChild(createMarker("日付不明", "year"));
-							lastSection = "unknown";
-							lastYear = "";
-							lastMonth = "";
-						}
-					} else {
-						if (lastSection !== "date" || year !== lastYear) {
-							fragment.appendChild(createMarker(`${year}年`, "year"));
-							lastYear = year;
-							lastMonth = "";
-							lastSection = "date";
-						}
-						if (month && month !== lastMonth) {
-							const showMonthMarkers = yearMonthMarkerFlags.get(year);
-							if (showMonthMarkers) {
-								fragment.appendChild(
-									createMarker(`${Number(month)}月`, "month"),
-								);
+					if (showDateMarkers) {
+						const { year, month } = parseYearMonth(w.completed_date);
+						if (!year) {
+							if (lastSection !== "unknown") {
+								fragment.appendChild(createMarker("日付不明", "year"));
+								lastSection = "unknown";
+								lastYear = "";
+								lastMonth = "";
 							}
-							lastMonth = month;
+						} else {
+							if (lastSection !== "date" || year !== lastYear) {
+								fragment.appendChild(createMarker(`${year}年`, "year"));
+								lastYear = year;
+								lastMonth = "";
+								lastSection = "date";
+							}
+							if (month && month !== lastMonth) {
+								const showMonthMarkers = yearMonthMarkerFlags.get(year);
+								if (showMonthMarkers) {
+									fragment.appendChild(createMarker(`${Number(month)}月`, "month"));
+								}
+								lastMonth = month;
+							}
 						}
 					}
 
@@ -4838,8 +4996,8 @@
 			function getViewerSelfLabel() {
 				const name =
 					trimText(state.viewer.displayName) || trimText(state.viewer.nickname);
-				if (name) return `${name}さんの さくひん`;
-				return "あなたの さくひん";
+				if (name) return `${name} さん`;
+				return "あなた";
 			}
 
 			function updateHeaderTitle() {
@@ -5292,24 +5450,33 @@
 			}
 
 			function bindEvents() {
-				els.filterTypeSelect?.addEventListener("change", () => {
-					const nextType = trimText(els.filterTypeSelect.value);
+				els.filterTypeToggle?.addEventListener("click", (event) => {
+					const target = event.target;
+					if (!(target instanceof Element)) return;
+					const button = target.closest("button[data-filter-type]");
+					if (!(button instanceof HTMLElement)) return;
+					const nextType = trimText(button.dataset.filterType || "");
 					if (isGroupFilterType(nextType)) {
 						setActiveFilter(nextType, "", true);
 						return;
 					}
 					setActiveFilter("", "", true);
 				});
-				els.groupSortSelect?.addEventListener("change", () => {
-					const next = trimText(els.groupSortSelect.value);
+				els.groupBackButton?.addEventListener("click", () => {
+					if (!isGroupFilterType(state.filter.type)) return;
+					setActiveFilter(state.filter.type, "", true);
+				});
+				els.groupSortToggle?.addEventListener("click", (event) => {
+					const target = event.target;
+					if (!(target instanceof Element)) return;
+					const button = target.closest("button[data-group-sort]");
+					if (!(button instanceof HTMLElement)) return;
+					const next = trimText(button.dataset.groupSort || "");
 					state.groupSort = next === "alpha" ? "alpha" : "count";
 					if (isGroupingMode()) {
 						applyFilter(false);
 					}
-				});
-				els.groupBackButton?.addEventListener("click", () => {
-					if (!isGroupFilterType(state.filter.type)) return;
-					setActiveFilter(state.filter.type, "", true);
+					syncGroupSortSwitch();
 				});
 				els.viewerSelfButton?.addEventListener("click", () => {
 					setActiveFilter("viewer", "self", true);
