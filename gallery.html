@@ -2585,42 +2585,29 @@
 				min-width: 0;
 			}
 
-			.group-selected-value {
-				width: fit-content;
-				max-width: min(100%, 320px);
+			.group-selected-toggle {
+				flex: 1 1 220px;
 				min-width: 0;
-				border: 0;
-				border-radius: 999px;
-				background: var(--group-title-chip-bg);
-				color: #fff;
-				font-size: 14px;
-				font-weight: 800;
-				min-height: var(--toggle-pill-height);
-				padding: 4px 14px;
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				white-space: nowrap;
 			}
 
-			.group-back-button {
-				width: fit-content;
-				max-width: 100%;
-				border: 0;
-				border-radius: 999px;
-				background: var(--toggle-track);
-				color: var(--toggle-text);
-				font-size: 14px;
-				font-weight: 800;
-				min-height: var(--toggle-pill-height);
-				padding: 4px 14px;
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				white-space: nowrap;
-				cursor: pointer;
+			.group-selected-toggle .group-selected-value,
+			.group-selected-toggle .group-back-button {
+				flex: 1 1 0;
+				min-width: 0;
+			}
+
+			.group-selected-toggle .group-selected-value {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				text-align: center;
+				padding-top: 8px;
+				padding-bottom: 6px;
+				cursor: default;
+			}
+
+			.group-selected-toggle .group-selected-value.is-active {
+				background: var(--group-title-chip-bg);
+				color: #fff;
 			}
 
 			@media (min-width: 900px) {
@@ -3486,10 +3473,18 @@
 										アルファベット順
 									</button>
 								</div>
-								<div class="group-selected-value" id="group-selected-value" hidden></div>
-								<button class="group-back-button" id="group-back-button" type="button" hidden>
-									一覧にもどる
-								</button>
+								<div
+									class="pill-toggle group-selected-toggle"
+									id="group-selected-toggle"
+									role="group"
+									aria-label="選択中グループ"
+									hidden
+								>
+									<div class="pill-toggle-button group-selected-value is-active" id="group-selected-value"></div>
+									<button class="pill-toggle-button group-back-button" id="group-back-button" type="button">
+										一覧にもどる
+									</button>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -3559,6 +3554,7 @@
 				filters: document.getElementById("filters"),
 				groupSort: document.getElementById("group-sort"),
 				groupSortToggle: document.getElementById("group-sort-toggle"),
+				groupSelectedToggle: document.getElementById("group-selected-toggle"),
 				groupSelectedValue: document.getElementById("group-selected-value"),
 				groupBackButton: document.getElementById("group-back-button"),
 				count: document.getElementById("count"),
@@ -4445,8 +4441,10 @@
 						syncGroupSortSwitch();
 					}
 				}
+				if (els.groupSelectedToggle) {
+					els.groupSelectedToggle.hidden = !showSelected;
+				}
 				if (els.groupSelectedValue) {
-					els.groupSelectedValue.hidden = !showSelected;
 					if (showSelected) {
 						const selectedLabel = getSelectedGroupFilterLabel();
 						els.groupSelectedValue.textContent = selectedLabel;
@@ -4461,7 +4459,6 @@
 					}
 				}
 				if (els.groupBackButton) {
-					els.groupBackButton.hidden = !showSelected;
 					els.groupBackButton.textContent = "一覧にもどる";
 				}
 			}
