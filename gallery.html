@@ -4431,7 +4431,13 @@
 				const showSort = isGroupFilter && !showSelected;
 
 				if (els.groupSort) {
-					els.groupSort.hidden = !isGroupFilter;
+					// 「全作品」時も右側レーンを残して、フィルタートグルの幅変化を防ぐ
+					els.groupSort.hidden = false;
+					if (isGroupFilter) {
+						els.groupSort.removeAttribute("aria-hidden");
+					} else {
+						els.groupSort.setAttribute("aria-hidden", "true");
+					}
 				}
 				if (els.groupSortToggle) {
 					els.groupSortToggle.hidden = !showSort;
