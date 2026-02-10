@@ -2397,7 +2397,7 @@
 
 			.app {
 				min-height: 100vh;
-				padding: 0px 0px px;
+				padding: 0;
 				width: 100%;
 			}
 
@@ -2405,55 +2405,83 @@
 				position: sticky;
 				top: 0;
 				z-index: 5;
-				background: var(--paper);
-				border: none;
-				padding: 6px 0 6px;
+				background: rgba(250, 248, 243, 0.92);
+				backdrop-filter: blur(8px);
+				-webkit-backdrop-filter: blur(8px);
+				border-bottom: 1px solid rgba(140, 108, 88, 0.14);
+				padding: 7px 0 7px;
 				margin-bottom: 6px;
-				box-shadow: var(--shadow);
+				box-shadow:
+					0 4px 12px rgba(86, 56, 38, 0.1),
+					inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+				transition:
+					transform 0.22s ease,
+					opacity 0.2s ease,
+					box-shadow 0.2s ease;
+				will-change: transform;
+			}
+
+			.header.is-hidden {
+				transform: translateY(calc(-100% - 8px));
+				opacity: 0.02;
+				pointer-events: none;
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.header {
+					transition: none;
+				}
 			}
 
 			.header-inner {
-				max-width: 1080px;
+				max-width: 1240px;
 				margin: 0 auto;
+				padding: 0 8px;
+				display: grid;
+				gap: 6px;
 			}
 
 			.title-row {
 				display: flex;
-				align-items: baseline;
+				align-items: center;
 				justify-content: flex-start;
-				gap: 6px;
-				padding: 0 6px 6px;
+				gap: 10px;
+				padding: 0;
 			}
 
 			.title {
-				font-size: 16px;
-				letter-spacing: 0.04em;
+				font-size: clamp(16px, 4.2vw, 22px);
+				letter-spacing: 0.03em;
 				margin: 0;
 				font-weight: 800;
-				padding: 0 0 0 6px;
+				padding: 0;
+				line-height: 1.15;
 			}
 
 			.count {
 				color: var(--muted);
-				font-size: 10px;
+				font-size: clamp(10px, 2.5vw, 12px);
 				margin-left: auto;
 				text-align: right;
-				min-width: 60px;
-				padding: 0 6px 0 0;
+				min-width: 0;
+				padding: 0;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+				white-space: nowrap;
 			}
 
 			.viewer-actions {
 				display: flex;
-				justify-content: center;
-				padding: 0 12px 4px;
+				justify-content: flex-start;
+				padding: 0;
 			}
 
 			.viewer-toggle {
 				display: inline-flex;
 				align-items: center;
-				gap: 4px;
+				gap: 2px;
 				padding: 2px;
-				border: 2px solid var(--line);
+				border: 1px solid var(--line);
 				border-radius: 999px;
 				background: var(--paper);
 			}
@@ -2463,10 +2491,10 @@
 				border-radius: 999px;
 				background: transparent;
 				color: var(--subtle);
-				font-size: 12px;
+				font-size: 11px;
 				font-weight: 800;
 				line-height: 1.2;
-				padding: 5px 10px;
+				padding: 6px 10px;
 				cursor: pointer;
 				white-space: nowrap;
 			}
@@ -2481,25 +2509,106 @@
 				cursor: default;
 			}
 
+			.filter-bar {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: end;
+				gap: 6px;
+			}
+
 			.filters {
 				display: grid;
 				gap: 6px;
-				padding: 0 6px;
+				padding: 0;
+				flex: 1 1 calc(50% - 3px);
+				min-width: 0;
 			}
 
-			.filter-row {
+			.filter-type {
 				display: grid;
-				gap: 6px;
-				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 4px;
+			}
+
+			.filter-type-label {
+				font-size: 10px;
+				color: var(--muted);
+				font-weight: 700;
+				padding-left: 2px;
+			}
+
+			.filter-selected-group {
+				width: 100%;
+				border-radius: 8px;
+				border: 1px solid var(--line);
+				font-size: 13px;
+				min-height: 34px;
+				padding: 6px 10px;
+				background: var(--paper);
+				color: var(--ink);
+				font-weight: 700;
+				display: flex;
+				align-items: center;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.group-sort {
+				display: grid;
+				gap: 4px;
+				padding: 0;
+				flex: 1 1 calc(50% - 3px);
+				min-width: 0;
+			}
+
+			.group-sort-select {
+				width: 100%;
+			}
+
+			.group-back-button {
+				width: 100%;
+				border: 1px solid var(--line);
+				border-radius: 8px;
+				background: var(--paper);
+				color: var(--subtle);
+				font-size: 12px;
+				font-weight: 700;
+				min-height: 34px;
+				padding: 5px 10px;
 			}
 
 			@media (min-width: 900px) {
-				.filters {
-					grid-template-columns: repeat(3, minmax(0, 1fr));
+				.header-inner {
+					grid-template-columns: auto auto;
+					align-items: end;
 				}
 
-				.filter-row {
-					display: contents;
+				.title-row {
+					grid-column: 1 / -1;
+				}
+
+				.viewer-actions {
+					grid-column: 1 / 2;
+					align-self: center;
+				}
+
+				.filter-bar {
+					grid-column: 2 / 3;
+					justify-self: end;
+					gap: 8px;
+					width: min(560px, 100%);
+				}
+
+				.filters {
+					flex: 0 1 280px;
+				}
+
+				.group-sort {
+					flex: 0 1 220px;
+				}
+
+				.group-back-button {
+					padding: 6px 12px;
 				}
 			}
 
@@ -2511,9 +2620,10 @@
 			select {
 				width: 100%;
 				border-radius: 8px;
-				border: 2px solid var(--line);
-				font-size: 14px;
-				padding: 4px 14px;
+				border: 1px solid var(--line);
+				font-size: 13px;
+				padding: 5px 10px;
+				min-height: 34px;
 				background: var(--paper);
 				color: var(--ink);
 				font-variant-numeric: tabular-nums;
@@ -2522,6 +2632,11 @@
 			.filter-select {
 				position: relative;
 				width: 100%;
+			}
+
+			.filter-select.is-disabled .filter-trigger {
+				opacity: 0.6;
+				cursor: default;
 			}
 
 			.filter-trigger {
@@ -2668,7 +2783,7 @@
 			.grid {
 				display: grid;
 				gap: var(--grid-gap);
-				grid-template-columns: repeat(2, minmax(0, 1fr));
+				grid-template-columns: repeat(3, minmax(0, 1fr));
 				padding: 0 6px 20px;
 			}
 
@@ -2682,13 +2797,7 @@
 				padding: 56px 12px 40px;
 			}
 
-			@media (min-width: 640px) {
-				.grid {
-					grid-template-columns: repeat(3, minmax(0, 1fr));
-				}
-			}
-
-			@media (min-width: 980px) {
+			@media (min-width: 900px) {
 				.grid {
 					grid-template-columns: repeat(4, minmax(0, 1fr));
 				}
@@ -2697,6 +2806,12 @@
 			@media (min-width: 1240px) {
 				.grid {
 					grid-template-columns: repeat(5, minmax(0, 1fr));
+				}
+			}
+
+			@media (min-width: 1560px) {
+				.grid {
+					grid-template-columns: repeat(6, minmax(0, 1fr));
 				}
 			}
 
@@ -2732,16 +2847,37 @@
 				display: block;
 			}
 
+			.group-count-badge {
+				position: absolute;
+				right: 6px;
+				bottom: 6px;
+				padding: 3px 7px;
+				border-radius: 999px;
+				background: rgba(36, 28, 20, 0.8);
+				color: #fff;
+				font-size: 10px;
+				font-weight: 700;
+				line-height: 1;
+				font-variant-numeric: tabular-nums;
+				backdrop-filter: blur(2px);
+			}
+
+			.image-count-badge {
+				min-width: 18px;
+				text-align: center;
+				justify-content: center;
+			}
+
 			.card-body {
-				padding: 10px 12px 12px;
+				padding: 7px 8px 8px;
 				display: grid;
-				gap: 6px;
+				gap: 4px;
 			}
 
 			.card-title {
-				font-size: 14px;
+				font-size: clamp(11px, 1.9vw, 14px);
 				margin: 0;
-				line-height: 1.4;
+				line-height: 1.3;
 			}
 
 			.card-title-row {
@@ -2752,7 +2888,7 @@
 			}
 
 			.card-meta {
-				font-size: 11px;
+				font-size: 10px;
 				color: var(--muted);
 			}
 
@@ -2766,8 +2902,8 @@
 				position: relative;
 				display: grid;
 				place-items: center;
-				width: 40px;
-				height: 40px;
+				width: 32px;
+				height: 32px;
 				background: #fff;
 				color: var(--accent);
 				border: none;
@@ -2780,8 +2916,8 @@
 			}
 
 			.star-btn svg {
-				width: 20px;
-				height: 20px;
+				width: 16px;
+				height: 16px;
 				stroke: var(--accent);
 				stroke-width: 1.7;
 				stroke-linejoin: round;
@@ -2792,13 +2928,13 @@
 			.star-btn .star-count {
 				position: absolute;
 				left: 50%;
-				bottom: 2px;
+				bottom: 1px;
 				min-width: 12px;
 				padding: 0 2px;
 				border-radius: 999px;
 				background: transparent;
 				color: var(--muted);
-				font-size: 9px;
+				font-size: 8px;
 				font-weight: 700;
 				line-height: 1;
 				text-align: center;
@@ -2853,10 +2989,31 @@
 			}
 
 			.star-count {
-				font-size: 10px;
+				font-size: 9px;
 				color: var(--muted);
 				text-align: center;
 				box-shadow: none;
+			}
+
+			@media (min-width: 900px) {
+				.card-body {
+					padding: 8px 10px 10px;
+					gap: 5px;
+				}
+
+				.star-btn {
+					width: 36px;
+					height: 36px;
+				}
+
+				.star-btn svg {
+					width: 18px;
+					height: 18px;
+				}
+
+				.star-btn .star-count {
+					font-size: 9px;
+				}
 			}
 
 			.star-hidden .star-count {
@@ -3227,7 +3384,7 @@
 			<div class="header">
 				<div class="header-inner">
 					<div class="title-row">
-						<h1 class="title">生徒作品ギャラリー</h1>
+						<h1 class="title" id="gallery-title">生徒作品ギャラリー</h1>
 						<div class="count" id="count"></div>
 					</div>
 					<div class="viewer-actions" id="viewer-actions" hidden>
@@ -3246,22 +3403,37 @@
 							</button>
 						</div>
 					</div>
-					<div class="filters" id="filters">
-						<div class="filter-select" data-filter="tag"></div>
-						<div class="filter-row">
-							<div class="filter-select" data-filter="author"></div>
-							<div class="filter-select" data-filter="studio"></div>
+					<div class="filter-bar">
+						<div class="filters" id="filters">
+							<div class="filter-type">
+								<label class="filter-type-label" for="filter-type-select">さくいん</label>
+								<select id="filter-type-select">
+									<option value="">全作品</option>
+									<option value="tag">キーワード</option>
+									<option value="author">作者</option>
+									<option value="studio">教室</option>
+								</select>
+								<div class="filter-selected-group" id="filter-selected-group" hidden></div>
+							</div>
+						</div>
+						<div class="group-sort" id="group-sort" hidden>
+							<select class="group-sort-select" id="group-sort-select" aria-label="カードの並び順">
+								<option value="count">作品数順</option>
+								<option value="alpha">アルファベット順</option>
+							</select>
+							<button class="group-back-button" id="group-back-button" type="button" hidden>
+								一覧に戻る
+							</button>
+							</div>
 						</div>
 					</div>
-				</div>
-			</div>
 
-			<div class="loading" id="loading">読み込み中...</div>
-			<div class="error" id="error" hidden>
-				読み込みに失敗しました。再読み込みしてください。
+					<div class="loading" id="loading">読み込み中...</div>
+					<div class="error" id="error" hidden>
+						読み込みに失敗しました。再読み込みしてください。
+					</div>
+					<div class="grid" id="grid" hidden></div>
 			</div>
-			<div class="grid" id="grid" hidden></div>
-		</div>
 
 		<div class="modal" id="modal" aria-hidden="true">
 			<div class="modal-shell">
@@ -3278,6 +3450,8 @@
 			const state = {
 				works: [],
 				filtered: [],
+				groupedVisibleCount: 0,
+				groupSort: "count",
 				starState: new Map(),
 				starsAvailable: true,
 				filter: { type: "", value: "" },
@@ -3287,6 +3461,9 @@
 				bodyScrollLocked: false,
 				gridCenteringRafId: 0,
 				gridCenteringLastColumns: 0,
+				headerScrollRafId: 0,
+				headerLastScrollY: 0,
+				headerHidden: false,
 				studentsIndex: null,
 				studentsByStudentId: new Map(),
 				studentsByNotionId: new Map(),
@@ -3305,17 +3482,17 @@
 			};
 
 			const els = {
+				header: document.querySelector(".header"),
 				loading: document.getElementById("loading"),
 				error: document.getElementById("error"),
 				grid: document.getElementById("grid"),
-				filterTag: document.querySelector('.filter-select[data-filter="tag"]'),
-				filterAuthor: document.querySelector(
-					'.filter-select[data-filter="author"]',
-				),
-				filterStudio: document.querySelector(
-					'.filter-select[data-filter="studio"]',
-				),
+				title: document.getElementById("gallery-title"),
+				filterTypeSelect: document.getElementById("filter-type-select"),
+				filterSelectedGroup: document.getElementById("filter-selected-group"),
 				filters: document.getElementById("filters"),
+				groupSort: document.getElementById("group-sort"),
+				groupSortSelect: document.getElementById("group-sort-select"),
+				groupBackButton: document.getElementById("group-back-button"),
 				count: document.getElementById("count"),
 				viewerActions: document.getElementById("viewer-actions"),
 				viewerSelfButton: document.getElementById("viewer-self-button"),
@@ -4130,108 +4307,195 @@
 				};
 			}
 
-			const FILTER_LABELS = {
-				tag: "キーワード",
-				author: "作者",
-				studio: "教室",
-			};
-			const filterControls = {};
+				const GROUP_FILTER_TYPES = new Set(["tag", "author", "studio"]);
 
-			function createFilterControl(root, type, label) {
-				root.innerHTML = `
-					<button class="filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="filter-menu-${type}">
-						<span class="filter-trigger-text">${label}</span>
-						<span class="filter-caret">▾</span>
-					</button>
-					<div class="filter-menu" id="filter-menu-${type}" role="listbox"></div>
-				`;
-				const trigger = root.querySelector(".filter-trigger");
-				const text = root.querySelector(".filter-trigger-text");
-				const menu = root.querySelector(".filter-menu");
-
-				trigger.addEventListener("click", (e) => {
-					e.stopPropagation();
-					toggleFilterMenu(type);
-				});
-
-				return { root, trigger, text, menu, type, label };
-			}
-
-			function initFilterControls() {
-				filterControls.tag = createFilterControl(
-					els.filterTag,
-					"tag",
-					FILTER_LABELS.tag,
-				);
-				filterControls.author = createFilterControl(
-					els.filterAuthor,
-					"author",
-					FILTER_LABELS.author,
-				);
-				filterControls.studio = createFilterControl(
-					els.filterStudio,
-					"studio",
-					FILTER_LABELS.studio,
-				);
-			}
-
-			function setFilterTrigger(control, value, displayLabel = "") {
-				if (value) {
-					control.text.textContent = displayLabel || value;
-					control.root.classList.add("has-value");
-				} else {
-					control.text.textContent = control.label;
-					control.root.classList.remove("has-value");
+				function isGroupFilterType(type) {
+					return GROUP_FILTER_TYPES.has(type);
 				}
-			}
 
-			function populateFilterMenu(control, options, total, selectedValue) {
-				control.menu.innerHTML = "";
-				const items = [
-					{ value: "__all__", label: "すべて", count: total },
-					...options.map(({ value, label, count }) => ({
-						value,
-						label: label || value,
-						count,
-					})),
-				];
+				function isGroupingMode() {
+					return isGroupFilterType(state.filter.type) && !state.filter.value;
+				}
 
-				items.forEach(({ value, label, count }) => {
-					const btn = document.createElement("button");
-					btn.type = "button";
-					btn.className = "filter-option";
-					if (selectedValue && value === selectedValue) {
-						btn.classList.add("is-selected");
+				function hasSelectedGroupFilterValue() {
+					return isGroupFilterType(state.filter.type) && Boolean(state.filter.value);
+				}
+
+				function syncFilterTypeSwitch() {
+					if (!els.filterTypeSelect) return;
+					if (isGroupFilterType(state.filter.type)) {
+						els.filterTypeSelect.value = state.filter.type;
+						return;
 					}
-					btn.dataset.value = value;
-					btn.innerHTML = `
-						<span class="filter-option-label">${label}</span>
-						<span class="filter-option-count">${count}</span>
-					`;
-					btn.addEventListener("click", (e) => {
-						e.stopPropagation();
-						onFilterSelect(control.type, value);
-						closeAllFilterMenus();
-					});
-					control.menu.appendChild(btn);
-				});
-			}
-
-			function closeAllFilterMenus() {
-				Object.values(filterControls).forEach((control) => {
-					control.root.classList.remove("open");
-					control.trigger.setAttribute("aria-expanded", "false");
-				});
-			}
-
-			function toggleFilterMenu(type) {
-				const control = filterControls[type];
-				const isOpen = control.root.classList.contains("open");
-				closeAllFilterMenus();
-				if (!isOpen) {
-					control.root.classList.add("open");
-					control.trigger.setAttribute("aria-expanded", "true");
+					els.filterTypeSelect.value = "";
 				}
+
+				function updateSelectedGroupLabel() {
+					if (!els.filterTypeSelect || !els.filterSelectedGroup) return;
+					const showSelected = hasSelectedGroupFilterValue();
+					els.filterTypeSelect.hidden = showSelected;
+					els.filterSelectedGroup.hidden = !showSelected;
+					if (!showSelected) {
+						els.filterSelectedGroup.textContent = "";
+						return;
+					}
+					const type = state.filter.type;
+					const value = state.filter.value;
+					const label =
+						findFilterOptionLabel(state.filterOptions?.[type] || [], value) || value;
+					els.filterSelectedGroup.textContent = label;
+				}
+
+				function updateGroupSortVisibility() {
+					const showSort = isGroupingMode();
+					const showBack = hasSelectedGroupFilterValue();
+
+					if (els.groupSort) {
+						els.groupSort.hidden = !(showSort || showBack);
+					}
+					if (els.groupSortSelect) {
+						els.groupSortSelect.hidden = !showSort;
+						if (showSort) {
+							els.groupSortSelect.value = state.groupSort;
+						}
+					}
+					if (els.groupBackButton) {
+						els.groupBackButton.hidden = !showBack;
+						if (showBack) {
+							els.groupBackButton.textContent = "一覧に戻る";
+						}
+					}
+				}
+
+			function buildGroupEntriesForWork(type, work) {
+				if (type === "tag") {
+					const tags = Array.isArray(work?.tags)
+						? uniqueStrings(work.tags.map((tag) => trimText(tag)))
+						: [];
+					return tags.map((value) => ({ value, label: value }));
+				}
+				if (type === "studio") {
+					const studio = trimText(work?.studio);
+					return studio ? [{ value: studio, label: studio }] : [];
+				}
+				if (type === "author") {
+					const values = new Map();
+					getWorkAuthors(work).forEach((author) => {
+						const value = trimText(author?.key);
+						if (!value || values.has(value)) return;
+						values.set(value, {
+							value,
+							label: getAuthorLabelForChip(author) || value,
+						});
+					});
+					return Array.from(values.values());
+				}
+				return [];
+			}
+
+			function sortGroupedCards(items) {
+				const sorted = [...items];
+				const compareLabel = (a, b) =>
+					a.label.localeCompare(b.label, "ja", {
+						numeric: true,
+						sensitivity: "base",
+					});
+				if (state.groupSort === "alpha") {
+					sorted.sort(compareLabel);
+					return sorted;
+				}
+				sorted.sort((a, b) => {
+					if (b.count !== a.count) return b.count - a.count;
+					return compareLabel(a, b);
+				});
+				return sorted;
+			}
+
+			function buildGroupedCards(type, works) {
+				const groups = new Map();
+				works.forEach((work) => {
+					const entries = buildGroupEntriesForWork(type, work);
+					entries.forEach(({ value, label }) => {
+						if (!value) return;
+						const current = groups.get(value) || {
+							value,
+							label: label || value,
+							count: 0,
+							representative: null,
+						};
+						current.count += 1;
+						if (!current.representative) current.representative = work;
+						groups.set(value, current);
+					});
+				});
+
+				const list = Array.from(groups.values()).map((group) => {
+					const work = group.representative;
+					const thumb = work?.thumb || work?.images?.[0] || PLACEHOLDER;
+					return {
+						value: group.value,
+						label: group.label,
+						count: group.count,
+						thumb,
+					};
+				});
+				return sortGroupedCards(list);
+			}
+
+			function renderGroupedGrid(type, groups) {
+				els.grid.innerHTML = "";
+				const fragment = document.createDocumentFragment();
+				if (!Array.isArray(groups) || groups.length === 0) {
+					const emptyMessage = document.createElement("p");
+					emptyMessage.className = "empty-message";
+					emptyMessage.textContent = "表示できる項目がありません。";
+					fragment.appendChild(emptyMessage);
+					els.grid.appendChild(fragment);
+					els.grid.hidden = false;
+					scheduleGridCentering(true);
+					return;
+				}
+
+				groups.forEach((group) => {
+					const card = document.createElement("div");
+					card.className = "card card--group";
+					card.dataset.filterType = type;
+					card.dataset.filterValue = group.value;
+
+					const thumb = document.createElement("div");
+					thumb.className = "thumb";
+					const img = document.createElement("img");
+					img.src = group.thumb;
+					img.loading = "lazy";
+					img.alt = group.label;
+					img.onerror = () => {
+						img.src = PLACEHOLDER;
+					};
+					thumb.appendChild(img);
+
+					const badge = document.createElement("span");
+					badge.className = "group-count-badge";
+					badge.textContent = `${group.count}作品`;
+					thumb.appendChild(badge);
+
+					const body = document.createElement("div");
+					body.className = "card-body";
+					const title = document.createElement("p");
+					title.className = "card-title";
+					title.textContent = group.label;
+					body.appendChild(title);
+
+					card.appendChild(thumb);
+					card.appendChild(body);
+					card.addEventListener("click", () =>
+						setActiveFilter(type, group.value, true),
+					);
+					fragment.appendChild(card);
+				});
+
+				els.grid.appendChild(fragment);
+				els.grid.hidden = false;
+				scheduleGridCentering(true);
 			}
 
 			function applyFilter(resetScroll = false) {
@@ -4252,7 +4516,15 @@
 					});
 				}
 				state.filtered = works;
-				renderGrid(works);
+				if (isGroupFilterType(type) && !value) {
+					const groups = buildGroupedCards(type, works);
+					state.groupedVisibleCount = groups.length;
+					renderGroupedGrid(type, groups);
+				} else {
+					state.groupedVisibleCount = 0;
+					renderGrid(works);
+				}
+				updateGroupSortVisibility();
 				updateCount();
 				if (resetScroll) {
 					window.scrollTo(0, 0);
@@ -4388,6 +4660,15 @@
 						img.src = PLACEHOLDER;
 					};
 					thumb.appendChild(img);
+					const imageCount = Array.isArray(w.images)
+						? w.images.filter(Boolean).length
+						: 0;
+					if (imageCount > 1) {
+						const imageCountBadge = document.createElement("span");
+						imageCountBadge.className = "group-count-badge image-count-badge";
+						imageCountBadge.textContent = String(imageCount);
+						thumb.appendChild(imageCountBadge);
+					}
 
 					const body = document.createElement("div");
 					body.className = "card-body";
@@ -4492,6 +4773,10 @@
 			function updateCount() {
 				const total = state.works.length;
 				const filtered = state.filtered.length;
+				if (isGroupingMode()) {
+					els.count.textContent = `${state.groupedVisibleCount} groups / ${filtered} works`;
+					return;
+				}
 				if (total === filtered) {
 					els.count.textContent = `${total} works`;
 				} else {
@@ -4503,20 +4788,29 @@
 				const params = new URLSearchParams(location.search);
 				const type = params.get("filter") || "";
 				const value = params.get("value") || "";
-				if (
-					type &&
-					value &&
-					["tag", "author", "studio", "viewer"].includes(type)
-				) {
+				if (!["tag", "author", "studio", "viewer"].includes(type)) return;
+				if (type === "viewer") {
+					if (value === "self") state.filter = { type, value };
+					return;
+				}
+				if (type && value) {
 					state.filter = { type, value };
+					return;
+				}
+				if (type && !value) {
+					state.filter = { type, value: "" };
 				}
 			}
 
 			function writeFilterToUrl() {
 				const params = new URLSearchParams(location.search);
-				if (state.filter.type && state.filter.value) {
+				if (state.filter.type) {
 					params.set("filter", state.filter.type);
-					params.set("value", state.filter.value);
+					if (state.filter.value) {
+						params.set("value", state.filter.value);
+					} else {
+						params.delete("value");
+					}
 				} else {
 					params.delete("filter");
 					params.delete("value");
@@ -4547,7 +4841,17 @@
 				return "あなたの さくひん";
 			}
 
+			function updateHeaderTitle() {
+				if (!els.title) return;
+				const next = state.viewer.isLoggedIn
+					? "さくひんギャラリー"
+					: "生徒作品ギャラリー";
+				els.title.textContent = next;
+				document.title = next;
+			}
+
 			function updateViewerActions() {
+				updateHeaderTitle();
 				if (
 					!els.viewerActions ||
 					!els.viewerSelfButton ||
@@ -4572,77 +4876,81 @@
 				els.viewerAllButton.classList.toggle("is-active", !isSelfView);
 				els.viewerSelfButton.setAttribute("aria-pressed", isSelfView ? "true" : "false");
 				els.viewerAllButton.setAttribute("aria-pressed", !isSelfView ? "true" : "false");
-
-				if (isSelfView) {
-					closeAllFilterMenus();
-				}
 				els.filters.hidden = isSelfView;
 			}
 
-			function syncFilterControls(options) {
-				const selectedTag =
-					state.filter.type === "tag" ? state.filter.value : "";
-				const selectedAuthor =
-					state.filter.type === "author" ? state.filter.value : "";
-				const selectedStudio =
-					state.filter.type === "studio" ? state.filter.value : "";
-
-				populateFilterMenu(
-					filterControls.tag,
-					options.tag,
-					options.total,
-					selectedTag,
-				);
-				populateFilterMenu(
-					filterControls.author,
-					options.author,
-					options.total,
-					selectedAuthor,
-				);
-				populateFilterMenu(
-					filterControls.studio,
-					options.studio,
-					options.total,
-					selectedStudio,
-				);
-
-				setFilterTrigger(
-					filterControls.tag,
-					selectedTag,
-					findFilterOptionLabel(options.tag, selectedTag),
-				);
-				setFilterTrigger(
-					filterControls.author,
-					selectedAuthor,
-					findFilterOptionLabel(options.author, selectedAuthor),
-				);
-				setFilterTrigger(
-					filterControls.studio,
-					selectedStudio,
-					findFilterOptionLabel(options.studio, selectedStudio),
-				);
+			function syncFilterControls() {
+				syncFilterTypeSwitch();
+				updateSelectedGroupLabel();
 				updateViewerActions();
+				updateGroupSortVisibility();
+			}
+
+			function setHeaderHidden(hidden) {
+				if (!els.header) return;
+				const next = Boolean(hidden);
+				if (state.headerHidden === next) return;
+				state.headerHidden = next;
+				els.header.classList.toggle("is-hidden", next);
+			}
+
+			function syncHeaderVisibilityByScroll() {
+				if (!els.header) return;
+				if (state.bodyScrollLocked) {
+					setHeaderHidden(false);
+					return;
+				}
+				const currentY = Math.max(0, window.scrollY || 0);
+				const delta = currentY - state.headerLastScrollY;
+				state.headerLastScrollY = currentY;
+
+				if (currentY <= 4) {
+					setHeaderHidden(false);
+					return;
+				}
+				if (Math.abs(delta) < 2) return;
+				if (delta > 8 && currentY > 64) {
+					setHeaderHidden(true);
+					return;
+				}
+				if (delta < -4) {
+					setHeaderHidden(false);
+				}
+			}
+
+			function queueHeaderScrollUpdate() {
+				if (state.headerScrollRafId) return;
+				state.headerScrollRafId = requestAnimationFrame(() => {
+					state.headerScrollRafId = 0;
+					syncHeaderVisibilityByScroll();
+				});
+			}
+
+			function resetHeaderScrollState() {
+				state.headerLastScrollY = Math.max(0, window.scrollY || 0);
+				if (state.headerLastScrollY <= 4) {
+					setHeaderHidden(false);
+				}
 			}
 
 			function setActiveFilter(type, value, resetScroll = false) {
-				if (!type || !value) {
+				const normalizedType = trimText(type);
+				const normalizedValue = trimText(value);
+				if (!normalizedType) {
+					state.filter = { type: "", value: "" };
+				} else if (
+					normalizedType === "viewer" &&
+					normalizedValue !== "self"
+				) {
 					state.filter = { type: "", value: "" };
 				} else {
-					state.filter = { type, value };
+					state.filter = { type: normalizedType, value: normalizedValue };
 				}
 				writeFilterToUrl();
 				if (state.filterOptions) {
-					syncFilterControls(state.filterOptions);
+					syncFilterControls();
 				}
 				applyFilter(resetScroll);
-			}
-
-			function onFilterSelect(type, value) {
-				if (!value || value === "__all__") {
-					setActiveFilter("", "", true);
-					return;
-				}
-				setActiveFilter(type, value, true);
 			}
 
 			function toSafeCount(value) {
@@ -4926,6 +5234,7 @@
 
 			function lockBodyScroll() {
 				if (state.bodyScrollLocked) return;
+				setHeaderHidden(false);
 				state.modalScrollY = window.scrollY || 0;
 				state.bodyScrollLocked = true;
 				document.body.classList.add("modal-open");
@@ -4944,10 +5253,12 @@
 				state.bodyScrollLocked = false;
 				clearScrollLockStyles();
 				window.scrollTo(0, restoreY);
+				resetHeaderScrollState();
 				requestAnimationFrame(() => {
 					if (state.bodyScrollLocked) return;
 					clearScrollLockStyles();
 					window.scrollTo(0, restoreY);
+					resetHeaderScrollState();
 				});
 			}
 
@@ -4980,14 +5291,24 @@
 			}
 
 			function bindEvents() {
-				document.addEventListener("click", (e) => {
-					if (!e.target.closest(".filter-select")) {
-						closeAllFilterMenus();
+				els.filterTypeSelect?.addEventListener("change", () => {
+					const nextType = trimText(els.filterTypeSelect.value);
+					if (isGroupFilterType(nextType)) {
+						setActiveFilter(nextType, "", true);
+						return;
+					}
+					setActiveFilter("", "", true);
+				});
+				els.groupSortSelect?.addEventListener("change", () => {
+					const next = trimText(els.groupSortSelect.value);
+					state.groupSort = next === "alpha" ? "alpha" : "count";
+					if (isGroupingMode()) {
+						applyFilter(false);
 					}
 				});
-				window.addEventListener("blur", closeAllFilterMenus);
-				document.addEventListener("visibilitychange", () => {
-					if (document.hidden) closeAllFilterMenus();
+				els.groupBackButton?.addEventListener("click", () => {
+					if (!isGroupFilterType(state.filter.type)) return;
+					setActiveFilter(state.filter.type, "", true);
 				});
 				els.viewerSelfButton?.addEventListener("click", () => {
 					setActiveFilter("viewer", "self", true);
@@ -5004,9 +5325,11 @@
 				});
 				window.addEventListener("keydown", (e) => {
 					if (e.key === "Escape") {
-						closeAllFilterMenus();
 						closeModal();
 					}
+				});
+				window.addEventListener("scroll", queueHeaderScrollUpdate, {
+					passive: true,
 				});
 				window.addEventListener("resize", () => {
 					if (els.modal.classList.contains("open")) {
@@ -5014,6 +5337,8 @@
 						if (body) updateModalImageMaxHeight(body);
 					}
 					scheduleGridCentering(false);
+					resetHeaderScrollState();
+					queueHeaderScrollUpdate();
 				});
 			}
 
@@ -5056,8 +5381,9 @@
 				if (state.filter.type === "viewer") {
 					state.filter.value = "self";
 				}
-				initFilterControls();
-				syncFilterControls(state.filterOptions);
+				syncFilterControls();
+				resetHeaderScrollState();
+				syncHeaderVisibilityByScroll();
 				bindEvents();
 				applyFilter();
 
