@@ -3266,7 +3266,7 @@
 		<div class="modal" id="modal" aria-hidden="true">
 			<div class="modal-shell">
 				<button class="modal-back" id="modal-back" type="button">
-					＜ 戻る
+					＜ もどる
 				</button>
 				<div class="modal-panel" role="dialog" aria-modal="true">
 					<div id="modal-content"></div>
@@ -3284,6 +3284,9 @@
 				filterOptions: null,
 				starApiBase: "",
 				modalScrollY: 0,
+				bodyScrollLocked: false,
+				gridCenteringRafId: 0,
+				gridCenteringLastColumns: 0,
 				studentsIndex: null,
 				studentsByStudentId: new Map(),
 				studentsByNotionId: new Map(),
@@ -3936,11 +3939,17 @@
 			}
 
 			function resolveAuthorNames(author) {
+				const label = trimText(author?.label);
+				const nickname = trimText(author?.nickname);
+				const realName = trimText(author?.realName);
+				if (label && nickname && realName) {
+					return { label, nickname, realName };
+				}
 				const record = findStudentRecordForAuthor(author);
 				return {
-					label: trimText(author?.label || record?.displayName),
-					nickname: trimText(author?.nickname || record?.nickname),
-					realName: trimText(author?.realName || record?.realName),
+					label: label || trimText(record?.displayName),
+					nickname: nickname || trimText(record?.nickname),
+					realName: realName || trimText(record?.realName),
 				};
 			}
 
@@ -4324,7 +4333,7 @@
 					fragment.appendChild(emptyMessage);
 					els.grid.appendChild(fragment);
 					els.grid.hidden = false;
-					requestAnimationFrame(() => applyGridCentering());
+					scheduleGridCentering(true);
 					return;
 				}
 
@@ -4418,7 +4427,7 @@
 
 				els.grid.appendChild(fragment);
 				els.grid.hidden = false;
-				requestAnimationFrame(() => applyGridCentering());
+				scheduleGridCentering(true);
 			}
 
 			function getGridColumnCount() {
@@ -4428,12 +4437,24 @@
 				return template.split(" ").filter(Boolean).length;
 			}
 
-			function applyGridCentering() {
+			function scheduleGridCentering(force = false) {
+				if (state.gridCenteringRafId) {
+					cancelAnimationFrame(state.gridCenteringRafId);
+				}
+				state.gridCenteringRafId = requestAnimationFrame(() => {
+					state.gridCenteringRafId = 0;
+					applyGridCentering(force);
+				});
+			}
+
+			function applyGridCentering(force = false) {
 				if (els.grid.hidden) return;
 				const columns = getGridColumnCount();
-				if (columns <= 1) return;
+				if (!force && columns === state.gridCenteringLastColumns) return;
+				state.gridCenteringLastColumns = columns;
 
 				els.grid.querySelectorAll(".grid-spacer").forEach((el) => el.remove());
+				if (columns <= 1) return;
 
 				let segmentCards = [];
 				const children = Array.from(els.grid.children);
@@ -4863,7 +4884,7 @@
 				const backBottom = document.createElement("button");
 				backBottom.className = "modal-back";
 				backBottom.type = "button";
-				backBottom.textContent = "＜ 戻る";
+				backBottom.textContent = "＜ もどる";
 				backBottom.addEventListener("click", closeModal);
 				footer.appendChild(backBottom);
 				body.appendChild(footer);
@@ -4904,17 +4925,30 @@
 			}
 
 			function lockBodyScroll() {
-				if (document.body.classList.contains("modal-open")) return;
+				if (state.bodyScrollLocked) return;
 				state.modalScrollY = window.scrollY || 0;
+				state.bodyScrollLocked = true;
 				document.body.classList.add("modal-open");
 				document.body.style.top = `-${state.modalScrollY}px`;
+				document.documentElement.style.overflow = "hidden";
+			}
+
+			function clearScrollLockStyles() {
+				document.body.classList.remove("modal-open");
+				document.body.style.top = "";
+				document.documentElement.style.overflow = "";
 			}
 
 			function unlockBodyScroll(resetScroll = false) {
-				if (!document.body.classList.contains("modal-open")) return;
-				document.body.classList.remove("modal-open");
-				document.body.style.top = "";
-				window.scrollTo(0, resetScroll ? 0 : state.modalScrollY || 0);
+				const restoreY = resetScroll ? 0 : state.modalScrollY || 0;
+				state.bodyScrollLocked = false;
+				clearScrollLockStyles();
+				window.scrollTo(0, restoreY);
+				requestAnimationFrame(() => {
+					if (state.bodyScrollLocked) return;
+					clearScrollLockStyles();
+					window.scrollTo(0, restoreY);
+				});
 			}
 
 			function updateModalImageMaxHeight(bodyEl) {
@@ -4979,7 +5013,7 @@
 						const body = els.modalContent.querySelector(".modal-body");
 						if (body) updateModalImageMaxHeight(body);
 					}
-					applyGridCentering();
+					scheduleGridCentering(false);
 				});
 			}
 
