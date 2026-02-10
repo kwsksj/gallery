@@ -2499,14 +2499,6 @@
 				min-height: var(--toggle-pill-height);
 				border-radius: 999px;
 				background: var(--toggle-track);
-			}
-
-			.viewer-toggle {
-				width: 100%;
-				flex-wrap: wrap;
-			}
-
-			.pill-toggle {
 				width: 100%;
 				flex-wrap: wrap;
 			}
@@ -2577,35 +2569,6 @@
 			.filter-type {
 				display: grid;
 				gap: 4px;
-			}
-
-			.filter-type-label {
-				font-size: 10px;
-				color: var(--muted);
-				font-weight: 700;
-				padding-left: 2px;
-			}
-
-			.filter-type .filter-selected-group {
-				width: fit-content;
-				max-width: 100%;
-				border: 0;
-				border-radius: 999px;
-				font-size: 14px;
-				min-height: var(--toggle-pill-height);
-				padding: 4px 14px;
-				background: var(--toggle-track);
-				color: var(--toggle-text);
-				font-weight: 800;
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				justify-self: start;
-				text-align: center;
-				white-space: nowrap;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				cursor: pointer;
 			}
 
 			.group-sort {
@@ -2682,27 +2645,10 @@
 				.group-sort {
 					flex: 1 1 320px;
 				}
-
-				.filter-type .filter-selected-group {
-					padding: 4px 14px;
-				}
 			}
 
-			select,
 			button {
 				font: inherit;
-			}
-
-			select {
-				width: 100%;
-				border-radius: 8px;
-				border: 1px solid var(--line);
-				font-size: 13px;
-				padding: 5px 10px;
-				min-height: 34px;
-				background: var(--paper);
-				color: var(--ink);
-				font-variant-numeric: tabular-nums;
 			}
 
 			.filter-select {
@@ -3500,7 +3446,6 @@
 						<div class="filter-bar">
 							<div class="filters" id="filters">
 								<div class="filter-type">
-									<div class="filter-type-label"></div>
 									<div class="pill-toggle filter-type-toggle" id="filter-type-toggle" role="group" aria-label="さくいん">
 										<button class="pill-toggle-button" data-filter-type="" type="button" aria-pressed="true">
 											全作品
@@ -3515,7 +3460,6 @@
 											教室
 										</button>
 									</div>
-									<button class="filter-selected-group" id="filter-selected-group" type="button" hidden></button>
 								</div>
 							</div>
 							<div class="group-sort" id="group-sort" hidden>
@@ -3612,7 +3556,6 @@
 				grid: document.getElementById("grid"),
 				title: document.getElementById("gallery-title"),
 				filterTypeToggle: document.getElementById("filter-type-toggle"),
-				filterSelectedGroup: document.getElementById("filter-selected-group"),
 				filters: document.getElementById("filters"),
 				groupSort: document.getElementById("group-sort"),
 				groupSortToggle: document.getElementById("group-sort-toggle"),
@@ -4482,13 +4425,6 @@
 				});
 			}
 
-			function updateSelectedGroupLabel() {
-				if (!els.filterTypeToggle || !els.filterSelectedGroup) return;
-				els.filterTypeToggle.hidden = false;
-				els.filterSelectedGroup.hidden = true;
-				els.filterSelectedGroup.textContent = "";
-			}
-
 			function updateGroupSortVisibility() {
 				const isGroupFilter = isGroupFilterType(state.filter.type);
 				const showSelected = hasSelectedGroupFilterValue();
@@ -5040,7 +4976,6 @@
 
 			function syncFilterControls() {
 				syncFilterTypeSwitch();
-				updateSelectedGroupLabel();
 				updateViewerActions();
 				updateGroupSortVisibility();
 			}
