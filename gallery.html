@@ -3263,15 +3263,15 @@
 			<div class="grid" id="grid" hidden></div>
 		</div>
 
-			<div class="modal" id="modal" aria-hidden="true">
-				<div class="modal-shell">
-					<button class="modal-back" id="modal-back" type="button">
-						＜ もどる
-					</button>
-					<div class="modal-panel" role="dialog" aria-modal="true">
-						<div id="modal-content"></div>
-					</div>
+		<div class="modal" id="modal" aria-hidden="true">
+			<div class="modal-shell">
+				<button class="modal-back" id="modal-back" type="button">
+					＜ もどる
+				</button>
+				<div class="modal-panel" role="dialog" aria-modal="true">
+					<div id="modal-content"></div>
 				</div>
+			</div>
 		</div>
 
 		<script>
@@ -4930,30 +4930,23 @@
 				state.bodyScrollLocked = true;
 				document.body.classList.add("modal-open");
 				document.body.style.top = `-${state.modalScrollY}px`;
-				document.body.style.position = "fixed";
-				document.body.style.width = "100%";
-				document.body.style.overflow = "hidden";
 				document.documentElement.style.overflow = "hidden";
+			}
+
+			function clearScrollLockStyles() {
+				document.body.classList.remove("modal-open");
+				document.body.style.top = "";
+				document.documentElement.style.overflow = "";
 			}
 
 			function unlockBodyScroll(resetScroll = false) {
 				const restoreY = resetScroll ? 0 : state.modalScrollY || 0;
 				state.bodyScrollLocked = false;
-				document.body.classList.remove("modal-open");
-				document.body.style.top = "";
-				document.body.style.position = "";
-				document.body.style.width = "";
-				document.body.style.overflow = "";
-				document.documentElement.style.overflow = "";
+				clearScrollLockStyles();
 				window.scrollTo(0, restoreY);
 				requestAnimationFrame(() => {
 					if (state.bodyScrollLocked) return;
-					document.body.classList.remove("modal-open");
-					document.body.style.top = "";
-					document.body.style.position = "";
-					document.body.style.width = "";
-					document.body.style.overflow = "";
-					document.documentElement.style.overflow = "";
+					clearScrollLockStyles();
 					window.scrollTo(0, restoreY);
 				});
 			}
