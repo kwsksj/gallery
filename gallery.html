@@ -3424,16 +3424,17 @@
 							<button class="group-back-button" id="group-back-button" type="button" hidden>
 								一覧に戻る
 							</button>
-							</div>
 						</div>
 					</div>
-
-					<div class="loading" id="loading">読み込み中...</div>
-					<div class="error" id="error" hidden>
-						読み込みに失敗しました。再読み込みしてください。
-					</div>
-					<div class="grid" id="grid" hidden></div>
+				</div>
 			</div>
+
+			<div class="loading" id="loading">読み込み中...</div>
+			<div class="error" id="error" hidden>
+				読み込みに失敗しました。再読み込みしてください。
+			</div>
+			<div class="grid" id="grid" hidden></div>
+		</div>
 
 		<div class="modal" id="modal" aria-hidden="true">
 			<div class="modal-shell">
@@ -4307,65 +4308,65 @@
 				};
 			}
 
-				const GROUP_FILTER_TYPES = new Set(["tag", "author", "studio"]);
+			const GROUP_FILTER_TYPES = new Set(["tag", "author", "studio"]);
 
-				function isGroupFilterType(type) {
-					return GROUP_FILTER_TYPES.has(type);
+			function isGroupFilterType(type) {
+				return GROUP_FILTER_TYPES.has(type);
+			}
+
+			function isGroupingMode() {
+				return isGroupFilterType(state.filter.type) && !state.filter.value;
+			}
+
+			function hasSelectedGroupFilterValue() {
+				return isGroupFilterType(state.filter.type) && Boolean(state.filter.value);
+			}
+
+			function syncFilterTypeSwitch() {
+				if (!els.filterTypeSelect) return;
+				if (isGroupFilterType(state.filter.type)) {
+					els.filterTypeSelect.value = state.filter.type;
+					return;
 				}
+				els.filterTypeSelect.value = "";
+			}
 
-				function isGroupingMode() {
-					return isGroupFilterType(state.filter.type) && !state.filter.value;
+			function updateSelectedGroupLabel() {
+				if (!els.filterTypeSelect || !els.filterSelectedGroup) return;
+				const showSelected = hasSelectedGroupFilterValue();
+				els.filterTypeSelect.hidden = showSelected;
+				els.filterSelectedGroup.hidden = !showSelected;
+				if (!showSelected) {
+					els.filterSelectedGroup.textContent = "";
+					return;
 				}
+				const type = state.filter.type;
+				const value = state.filter.value;
+				const label =
+					findFilterOptionLabel(state.filterOptions?.[type] || [], value) || value;
+				els.filterSelectedGroup.textContent = label;
+			}
 
-				function hasSelectedGroupFilterValue() {
-					return isGroupFilterType(state.filter.type) && Boolean(state.filter.value);
+			function updateGroupSortVisibility() {
+				const showSort = isGroupingMode();
+				const showBack = hasSelectedGroupFilterValue();
+
+				if (els.groupSort) {
+					els.groupSort.hidden = !(showSort || showBack);
 				}
-
-				function syncFilterTypeSwitch() {
-					if (!els.filterTypeSelect) return;
-					if (isGroupFilterType(state.filter.type)) {
-						els.filterTypeSelect.value = state.filter.type;
-						return;
-					}
-					els.filterTypeSelect.value = "";
-				}
-
-				function updateSelectedGroupLabel() {
-					if (!els.filterTypeSelect || !els.filterSelectedGroup) return;
-					const showSelected = hasSelectedGroupFilterValue();
-					els.filterTypeSelect.hidden = showSelected;
-					els.filterSelectedGroup.hidden = !showSelected;
-					if (!showSelected) {
-						els.filterSelectedGroup.textContent = "";
-						return;
-					}
-					const type = state.filter.type;
-					const value = state.filter.value;
-					const label =
-						findFilterOptionLabel(state.filterOptions?.[type] || [], value) || value;
-					els.filterSelectedGroup.textContent = label;
-				}
-
-				function updateGroupSortVisibility() {
-					const showSort = isGroupingMode();
-					const showBack = hasSelectedGroupFilterValue();
-
-					if (els.groupSort) {
-						els.groupSort.hidden = !(showSort || showBack);
-					}
-					if (els.groupSortSelect) {
-						els.groupSortSelect.hidden = !showSort;
-						if (showSort) {
-							els.groupSortSelect.value = state.groupSort;
-						}
-					}
-					if (els.groupBackButton) {
-						els.groupBackButton.hidden = !showBack;
-						if (showBack) {
-							els.groupBackButton.textContent = "一覧に戻る";
-						}
+				if (els.groupSortSelect) {
+					els.groupSortSelect.hidden = !showSort;
+					if (showSort) {
+						els.groupSortSelect.value = state.groupSort;
 					}
 				}
+				if (els.groupBackButton) {
+					els.groupBackButton.hidden = !showBack;
+					if (showBack) {
+						els.groupBackButton.textContent = "一覧に戻る";
+					}
+				}
+			}
 
 			function buildGroupEntriesForWork(type, work) {
 				if (type === "tag") {
