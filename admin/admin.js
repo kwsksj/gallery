@@ -1611,16 +1611,16 @@ function applyDraftToUploadForm(draft) {
 		updateUploadGroupAndAuthorCandidates({ preferredGroupValue: "", preferredAuthorIds: [] });
 	}
 
-	if (typeof state.upload.setTagState === "function") {
-		state.upload.setTagState(targetDraft?.explicitTagIds || []);
-	}
-
 	if (readyCb) {
 		if (targetDraft) {
 			readyCb.checked = targetDraft.readyTouched ? Boolean(targetDraft.ready) : computeUploadReadyDefault();
 		} else {
 			readyCb.checked = false;
 		}
+	}
+
+	if (typeof state.upload.setTagState === "function") {
+		state.upload.setTagState(targetDraft?.explicitTagIds || []);
 	}
 
 	if (exifNote) exifNote.textContent = targetDraft?.completedDate ? `完成日: ${targetDraft.completedDate}` : "";
@@ -2425,25 +2425,43 @@ async function submitSingleUploadDraft(draft, { statusEl, allowInteractiveRecove
 				body: JSON.stringify(createPayload),
 			});
 
+		const cleanupOrphanedR2Files = async ({ notify = false } = {}) => {
+			const keys = filesOut.map((file) => file.key).filter(Boolean);
+			if (keys.length === 0) return true;
+			try {
+				await apiFetch("/admin/r2/delete", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ keys }),
+				});
+				if (notify) showToast("R2の孤立ファイルを削除しました");
+				return true;
+			} catch (cleanupErr) {
+				console.error("R2 cleanup failed:", cleanupErr);
+				return false;
+			}
+		};
+
 		let created = null;
 		try {
 			created = await tryCreate();
 		} catch (err) {
 			console.error(err);
-			if (!allowInteractiveRecovery) throw err;
+			if (!allowInteractiveRecovery) {
+				const deleted = await cleanupOrphanedR2Files();
+				if (!deleted) {
+					throw new Error(`${err.message}（Notion作成失敗後のR2削除にも失敗。手動確認が必要です）`);
+				}
+				throw err;
+			}
 			const retry = confirm("R2保存は成功しています。Notion作成を再試行しますか？（OK=再試行 / キャンセル=R2削除）");
 			if (retry) {
 				if (statusEl) statusEl.textContent = `${title || "作品"}: Notion作成を再試行中…`;
 				created = await tryCreate();
 			} else {
-				const keys = filesOut.map((file) => file.key).filter(Boolean);
-				if (keys.length > 0) {
-					await apiFetch("/admin/r2/delete", {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({ keys }),
-					});
-					showToast("R2の孤立ファイルを削除しました");
+				const deleted = await cleanupOrphanedR2Files({ notify: true });
+				if (!deleted) {
+					showToast("R2の孤立ファイル削除に失敗しました。手動確認してください。");
 				}
 				throw err;
 			}
