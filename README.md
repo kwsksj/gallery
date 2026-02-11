@@ -88,6 +88,18 @@ npm run upload:admin-indexes
 bash ./scripts/upload-admin-indexes.sh <bucket> <env-file> <out-dir>
 ```
 
+### 作品キュー スモークテスト
+
+複数画像を選択したときに「作品キュー」が生成されることをヘッドレスブラウザで検証できます。
+
+```bash
+npm install
+npx playwright install chromium
+npm run test:upload-queue-smoke
+```
+
+結果は `test-results/upload-queue-smoke.json` と `test-results/upload-queue-smoke.png` に出力されます。
+
 ## R2 配置
 
 - `gallery.html` / `gallery.json` / `thumbs/` を R2 にアップロード

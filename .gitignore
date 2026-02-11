@@ -3,3 +3,4 @@ gallery.json
 node_modules/
 archive/
 tmp/
+test-results/

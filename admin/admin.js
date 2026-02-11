@@ -1332,93 +1332,6 @@ function bindAuthorSearchInput({ inputEl, resultsRoot, selectEl, onPicked = null
 	});
 }
 
-function formatCandidateNoteText(value) {
-	const note = trimText(value);
-	return note || "（セッションノート未記入）";
-}
-
-function getAuthorOptionLabel(selectEl, authorId) {
-	const id = trimText(authorId);
-	if (!id) return "";
-	const option = Array.from(selectEl?.options || []).find((opt) => trimText(opt.value) === id);
-	const optionLabel = trimText(option?.textContent);
-	if (optionLabel) return optionLabel;
-	const record = getStudentRecordByAnyId(id);
-	return trimText(record?.choiceLabel || record?.displayName || id);
-}
-
-function renderUploadSelectedAuthors() {
-	const root = qs("#upload-author-selected");
-	const authorSelect = qs("#upload-author");
-	if (!root || !authorSelect) return;
-	root.innerHTML = "";
-	const selectedIds = getSelectedAuthorIds(authorSelect);
-	if (selectedIds.length === 0) {
-		root.hidden = true;
-		return;
-	}
-	root.hidden = false;
-	selectedIds.forEach((authorId) => {
-		const chip = el("span", { class: "chip chip--author-selected" });
-		chip.appendChild(el("span", { text: getAuthorOptionLabel(authorSelect, authorId) || authorId }));
-		const remove = el("button", { type: "button", text: "×", "aria-label": "作者選択を解除" });
-		remove.addEventListener("click", (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			const selected = new Set(getSelectedAuthorIds(authorSelect));
-			selected.delete(authorId);
-			setSelectedAuthorIds(authorSelect, Array.from(selected));
-			authorSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		});
-		chip.appendChild(remove);
-		root.appendChild(chip);
-	});
-}
-
-function renderUploadAuthorCandidates() {
-	const root = qs("#upload-author-candidate-notes");
-	const authorSelect = qs("#upload-author");
-	if (!root || !authorSelect) return;
-	root.innerHTML = "";
-
-	const candidates = Array.isArray(state.upload.authorCandidates) ? state.upload.authorCandidates : [];
-	if (candidates.length === 0) {
-		root.hidden = true;
-		return;
-	}
-	root.hidden = false;
-	root.appendChild(el("div", { class: "subnote", text: "候補ボタン（作者名 + セッションノート）" }));
-	const selectedIds = new Set(getSelectedAuthorIds(authorSelect));
-	candidates.forEach((candidate) => {
-		const candidateId = trimText(candidate?.id);
-		const label = trimText(candidate?.label);
-		if (!candidateId || !label) return;
-		const button = el("button", {
-			type: "button",
-			class: `candidate-note candidate-note--button${selectedIds.has(candidateId) ? " is-selected" : ""}`,
-		});
-		button.appendChild(el("div", { class: "candidate-note__name", text: label }));
-		button.appendChild(el("div", { class: "candidate-note__text", text: formatCandidateNoteText(candidate?.sessionNote) }));
-		button.addEventListener("click", () => {
-			const selected = new Set(getSelectedAuthorIds(authorSelect));
-			if (selected.has(candidateId)) {
-				selected.delete(candidateId);
-			} else {
-				ensureAuthorOption(authorSelect, buildStudentRecord({ id: candidateId, display_name: label }));
-				selected.add(candidateId);
-			}
-			setSelectedAuthorIds(authorSelect, Array.from(selected));
-			authorSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		});
-		root.appendChild(button);
-	});
-}
-
-function syncUploadAuthorUi() {
-	renderUploadSelectedAuthors();
-	renderUploadAuthorCandidates();
-}
-
 function getAuthorCandidatesForWork(work) {
 	const ymd = String(work?.completedDate || "").trim();
 	if (!ymd) return [];
@@ -1448,9 +1361,26 @@ function nextUploadDraftId() {
 	return `draft-${seq}`;
 }
 
+function createUploadLocalId() {
+	const randomUuid = globalThis?.crypto?.randomUUID;
+	if (typeof randomUuid === "function") {
+		return randomUuid.call(globalThis.crypto);
+	}
+	const randomValues = globalThis?.crypto?.getRandomValues;
+	if (typeof randomValues === "function") {
+		const bytes = new Uint8Array(16);
+		randomValues.call(globalThis.crypto, bytes);
+		bytes[6] = (bytes[6] & 0x0f) | 0x40;
+		bytes[8] = (bytes[8] & 0x3f) | 0x80;
+		const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+		return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+	}
+	return `local-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function createUploadFileEntry(file) {
 	return {
-		id: crypto.randomUUID(),
+		id: createUploadLocalId(),
 		file,
 		previewUrl: URL.createObjectURL(file),
 	};
@@ -2253,7 +2183,7 @@ function initUpload() {
 		submitAllBtn.addEventListener("click", async () => {
 			await submitUpload({ all: true });
 		});
-	});
+	}
 
 	const form = qs("#upload-form");
 	form.addEventListener("submit", async (e) => {
