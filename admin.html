@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>先生専用アップロード</title>
 		<link rel="stylesheet" href="./shared/gallery-core.css" />
-		<link rel="stylesheet" href="./admin/admin.css?v=20260209-6" />
+		<link rel="stylesheet" href="./admin/admin.css?v=20260210-1" />
 	</head>
 	<body>
 		<div
@@ -79,13 +79,31 @@
 						<div class="form-row">
 							<label class="label" for="upload-files">画像</label>
 							<input id="upload-files" class="input" type="file" accept="image/*" multiple />
+							<div class="subnote">複数作品ぶんをまとめて選択できます。選択後に作品キューで分割・統合して登録します。</div>
+						</div>
+
+						<div class="form-row">
+							<div class="toolbar toolbar--upload-drafts">
+								<div>
+									<div class="label">作品キュー</div>
+									<div id="upload-draft-status" class="subnote">画像を選択すると作品キューが作成されます。</div>
+								</div>
+								<div class="upload-draft-actions">
+									<button id="upload-draft-merge" class="btn" type="button">選択作品を統合</button>
+								</div>
+							</div>
+							<div id="upload-draft-list" class="upload-draft-list" aria-label="作品キュー"></div>
 						</div>
 
 						<div class="form-row">
 							<div class="help">
-								表紙（代表画像）は先頭扱いです。サムネをタップして表紙にできます。
+								表示中の作品の画像です。サムネをタップすると表紙（代表画像）にできます。
 							</div>
 							<div id="upload-previews" class="preview-strip" aria-label="画像プレビュー"></div>
+							<div class="toolbar toolbar--upload-images">
+								<div id="upload-image-selection-status" class="subnote">画像をチェックして作品を分割できます。</div>
+								<button id="upload-split-selected" class="btn" type="button">選択画像を新しい作品に分ける</button>
+							</div>
 						</div>
 
 						<div class="form-grid">
@@ -173,8 +191,9 @@
 
 						<div class="form-row form-actions">
 							<button id="upload-submit" class="btn btn--primary" type="submit">
-								アップロード＆Notion登録
+								現在の作品を登録
 							</button>
+							<button id="upload-submit-all" class="btn" type="button">未登録の作品を一括登録</button>
 							<div id="upload-status" class="status"></div>
 						</div>
 					</form>
@@ -272,6 +291,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260209-6"></script>
+		<script type="module" src="./admin/admin.js?v=20260210-1"></script>
 	</body>
 </html>
