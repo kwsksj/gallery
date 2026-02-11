@@ -2,6 +2,7 @@ import { debounce, el, formatIso, normalizeSearch, qs, qsa, showToast } from "..
 
 const ADMIN_API_TOKEN_STORAGE_KEY = "gallery.adminApiToken.v1";
 const COMPACT_HEADER_MEDIA_QUERY = "(max-width: 760px)";
+const JST_TIME_ZONE = "Asia/Tokyo";
 
 const state = {
 	config: null,
@@ -20,6 +21,14 @@ const state = {
 		coverIndex: 0,
 		explicitTagIds: [],
 		readyTouched: false,
+		authorCandidates: [],
+		resetTagState: null,
+		setTagState: null,
+		drafts: [],
+		activeDraftId: "",
+		selectedDraftIds: [],
+		selectedFileIds: [],
+		nextDraftSeq: 1,
 	},
 	curation: {
 		works: [],
@@ -841,7 +850,7 @@ function renderPickedTagChip(root, { id, roleLabel, onClear }) {
 	root.appendChild(chip);
 }
 
-function bindTagPickerInput({ inputEl, suggestRoot, onPick }) {
+function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = () => [], onCreated = null }) {
 	const renderSuggest = () => {
 		const q = trimText(inputEl.value);
 		suggestRoot.innerHTML = "";
@@ -862,6 +871,22 @@ function bindTagPickerInput({ inputEl, suggestRoot, onPick }) {
 			});
 			suggestRoot.appendChild(item);
 		});
+
+		if (list.length < 6) {
+			appendCreateTagSuggest(
+				suggestRoot,
+				q,
+				(createdId) => {
+					const resolvedId = resolveMergedTagId(createdId);
+					if (!resolvedId) return;
+					onCreated?.(resolvedId);
+					onPick(resolvedId);
+					inputEl.value = state.tagsById.get(resolvedId)?.name || q;
+					suggestRoot.innerHTML = "";
+				},
+				{ relatedTagIds: getRelatedTagIds() },
+			);
+		}
 	};
 
 	inputEl.addEventListener("input", debounce(renderSuggest, 120));
@@ -918,6 +943,7 @@ function createTagRelationEditor({ onTagAdded }) {
 			parentTagId = id;
 			refreshPicked();
 		},
+		onCreated: (id) => onTagAdded?.(id),
 	});
 	bindTagPickerInput({
 		inputEl: childInput,
@@ -926,6 +952,7 @@ function createTagRelationEditor({ onTagAdded }) {
 			childTagId = id;
 			refreshPicked();
 		},
+		onCreated: (id) => onTagAdded?.(id),
 	});
 
 	const addRelationBtn = el("button", { type: "button", class: "btn", text: "既存タグに親子関係を追加" });
@@ -941,31 +968,6 @@ function createTagRelationEditor({ onTagAdded }) {
 		}
 	});
 
-	const createInput = el("input", { class: "input input--sm", type: "text", placeholder: "新規タグ名" });
-	const createBtn = el("button", { type: "button", class: "btn", text: "新規作成（上記親子を設定）" });
-	createBtn.addEventListener("click", async () => {
-		const name = trimText(createInput.value);
-		if (!name) {
-			showToast("新規タグ名を入力してください");
-			return;
-		}
-		createBtn.disabled = true;
-		try {
-			const result = await createTagFromUi(name, {
-				parentIds: parentTagId ? [parentTagId] : [],
-				childIds: childTagId ? [childTagId] : [],
-			});
-			const resolvedId = resolveMergedTagId(result.id);
-			if (resolvedId) onTagAdded?.(resolvedId);
-			showToast(result.created ? "タグを作成しました" : "既存タグに親子関係を追加しました");
-			createInput.value = "";
-		} catch (err) {
-			showToast(`タグ作成に失敗: ${err.message}`);
-		} finally {
-			createBtn.disabled = false;
-		}
-	});
-
 	root.appendChild(
 		el("div", { class: "tag-relation-editor__grid" }, [
 			el("div", { class: "form-row" }, [el("label", { class: "label", text: "親タグ" }), parentPicker, parentPicked]),
@@ -974,15 +976,9 @@ function createTagRelationEditor({ onTagAdded }) {
 	);
 	root.appendChild(el("div", { class: "tag-relation-editor__actions" }, [addRelationBtn]));
 	root.appendChild(
-		el("div", { class: "tag-relation-editor__actions" }, [
-			createInput,
-			createBtn,
-		]),
-	);
-	root.appendChild(
 		el("div", {
 			class: "subnote",
-			text: "親/子を選んで「既存タグに親子関係を追加」、または新規タグ名を入力して「新規作成（上記親子を設定）」を実行できます。",
+			text: "親/子の検索候補から新規タグを作成できます。作成後に「既存タグに親子関係を追加」で反映してください。",
 		}),
 	);
 	return root;
@@ -1175,6 +1171,93 @@ function renderAuthorCandidateNotes(root, candidates) {
 	});
 }
 
+function formatCandidateNoteText(value) {
+	const note = trimText(value);
+	return note || "（セッションノート未記入）";
+}
+
+function getAuthorOptionLabel(selectEl, authorId) {
+	const id = trimText(authorId);
+	if (!id) return "";
+	const option = Array.from(selectEl?.options || []).find((opt) => trimText(opt.value) === id);
+	const optionLabel = trimText(option?.textContent);
+	if (optionLabel) return optionLabel;
+	const record = getStudentRecordByAnyId(id);
+	return trimText(record?.choiceLabel || record?.displayName || id);
+}
+
+function renderUploadSelectedAuthors() {
+	const root = qs("#upload-author-selected");
+	const authorSelect = qs("#upload-author");
+	if (!root || !authorSelect) return;
+	root.innerHTML = "";
+	const selectedIds = getSelectedAuthorIds(authorSelect);
+	if (selectedIds.length === 0) {
+		root.hidden = true;
+		return;
+	}
+	root.hidden = false;
+	selectedIds.forEach((authorId) => {
+		const chip = el("span", { class: "chip chip--author-selected" });
+		chip.appendChild(el("span", { text: getAuthorOptionLabel(authorSelect, authorId) || authorId }));
+		const remove = el("button", { type: "button", text: "×", "aria-label": "作者選択を解除" });
+		remove.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const selected = new Set(getSelectedAuthorIds(authorSelect));
+			selected.delete(authorId);
+			setSelectedAuthorIds(authorSelect, Array.from(selected));
+			authorSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		chip.appendChild(remove);
+		root.appendChild(chip);
+	});
+}
+
+function renderUploadAuthorCandidates() {
+	const root = qs("#upload-author-candidate-notes");
+	const authorSelect = qs("#upload-author");
+	if (!root || !authorSelect) return;
+	root.innerHTML = "";
+
+	const candidates = Array.isArray(state.upload.authorCandidates) ? state.upload.authorCandidates : [];
+	if (candidates.length === 0) {
+		root.hidden = true;
+		return;
+	}
+	root.hidden = false;
+	root.appendChild(el("div", { class: "subnote", text: "候補ボタン（作者名 + セッションノート）" }));
+	const selectedIds = new Set(getSelectedAuthorIds(authorSelect));
+	candidates.forEach((candidate) => {
+		const candidateId = trimText(candidate?.id);
+		const label = trimText(candidate?.label);
+		if (!candidateId || !label) return;
+		const button = el("button", {
+			type: "button",
+			class: `candidate-note candidate-note--button${selectedIds.has(candidateId) ? " is-selected" : ""}`,
+		});
+		button.appendChild(el("div", { class: "candidate-note__name", text: label }));
+		button.appendChild(el("div", { class: "candidate-note__text", text: formatCandidateNoteText(candidate?.sessionNote) }));
+		button.addEventListener("click", () => {
+			const selected = new Set(getSelectedAuthorIds(authorSelect));
+			if (selected.has(candidateId)) {
+				selected.delete(candidateId);
+			} else {
+				ensureAuthorOption(authorSelect, buildStudentRecord({ id: candidateId, display_name: label }));
+				selected.add(candidateId);
+			}
+			setSelectedAuthorIds(authorSelect, Array.from(selected));
+			authorSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		root.appendChild(button);
+	});
+}
+
+function syncUploadAuthorUi() {
+	renderUploadSelectedAuthors();
+	renderUploadAuthorCandidates();
+}
+
 function getAuthorCandidatesForWork(work) {
 	const ymd = String(work?.completedDate || "").trim();
 	if (!ymd) return [];
@@ -1198,25 +1281,369 @@ function getAuthorCandidatesForWork(work) {
 		.filter(Boolean);
 }
 
-function renderUploadPreviews() {
-	const root = qs("#upload-previews");
-	root.innerHTML = "";
+function nextUploadDraftId() {
+	const seq = Number(state.upload.nextDraftSeq) || 1;
+	state.upload.nextDraftSeq = seq + 1;
+	return `draft-${seq}`;
+}
 
-	state.upload.files.forEach((file, idx) => {
-		const url = file.previewUrl;
-		const item = el("div", { class: `preview${idx === state.upload.coverIndex ? " is-cover" : ""}` });
-		const img = el("img", { src: url, alt: "" });
-		item.appendChild(img);
-		if (idx === state.upload.coverIndex) item.appendChild(el("div", { class: "badge", text: "表紙" }));
-		item.addEventListener("click", () => {
-			state.upload.coverIndex = idx;
-			renderUploadPreviews();
-		});
-		root.appendChild(item);
+function createUploadFileEntry(file) {
+	return {
+		id: crypto.randomUUID(),
+		file,
+		previewUrl: URL.createObjectURL(file),
+	};
+}
+
+function createUploadDraft(files, defaults = {}) {
+	return {
+		id: defaults.id || nextUploadDraftId(),
+		files: Array.isArray(files) ? files : [],
+		coverIndex: Math.max(0, Number(defaults.coverIndex) || 0),
+		completedDate: trimText(defaults.completedDate),
+		groupValue: trimText(defaults.groupValue),
+		classroom: trimText(defaults.classroom),
+		venue: trimText(defaults.venue),
+		authorIds: Array.isArray(defaults.authorIds) ? [...new Set(defaults.authorIds.map(trimText).filter(Boolean))] : [],
+		title: trimText(defaults.title),
+		caption: trimText(defaults.caption),
+		explicitTagIds: Array.isArray(defaults.explicitTagIds) ? [...new Set(defaults.explicitTagIds.map(trimText).filter(Boolean))] : [],
+		ready: Boolean(defaults.ready),
+		readyTouched: Boolean(defaults.readyTouched),
+		authorCandidates: Array.isArray(defaults.authorCandidates) ? defaults.authorCandidates.slice() : [],
+		status: trimText(defaults.status) || "pending",
+		notionWorkId: trimText(defaults.notionWorkId),
+		error: trimText(defaults.error),
+	};
+}
+
+function disposeUploadFiles(files) {
+	if (!Array.isArray(files)) return;
+	files.forEach((entry) => {
+		if (entry?.previewUrl) URL.revokeObjectURL(entry.previewUrl);
 	});
 }
 
-function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
+function getUploadDraftById(id) {
+	const targetId = trimText(id);
+	if (!targetId) return null;
+	return state.upload.drafts.find((draft) => draft.id === targetId) || null;
+}
+
+function getActiveUploadDraft() {
+	return getUploadDraftById(state.upload.activeDraftId);
+}
+
+function normalizeUploadDraftCoverIndex(draft) {
+	const total = Array.isArray(draft?.files) ? draft.files.length : 0;
+	if (!draft) return;
+	if (total <= 0) {
+		draft.coverIndex = 0;
+		return;
+	}
+	const current = Number.isFinite(Number(draft.coverIndex)) ? Number(draft.coverIndex) : 0;
+	draft.coverIndex = Math.max(0, Math.min(current, total - 1));
+}
+
+function normalizeUploadSelections() {
+	const existingDraftIds = new Set(state.upload.drafts.map((draft) => draft.id));
+	state.upload.selectedDraftIds = state.upload.selectedDraftIds.filter((id) => existingDraftIds.has(id));
+	const active = getActiveUploadDraft();
+	if (!active) {
+		state.upload.selectedFileIds = [];
+		return;
+	}
+	const fileIds = new Set((active.files || []).map((file) => file.id));
+	state.upload.selectedFileIds = state.upload.selectedFileIds.filter((id) => fileIds.has(id));
+}
+
+function getUploadDraftDisplayTitle(draft, index) {
+	const fallback = `作品${index + 1}`;
+	const title = trimText(draft?.title);
+	return title || fallback;
+}
+
+function getUploadDraftStatusLabel(draft) {
+	const status = trimText(draft?.status) || "pending";
+	if (status === "saved") return "登録済";
+	if (status === "uploading") return "登録中";
+	if (status === "error") return "失敗";
+	return "未登録";
+}
+
+function updateUploadSelectionStatusText() {
+	const statusEl = qs("#upload-image-selection-status");
+	const splitBtn = qs("#upload-split-selected");
+	const active = getActiveUploadDraft();
+	if (!statusEl || !splitBtn) return;
+
+	const selectedCount = state.upload.selectedFileIds.length;
+	if (!active || (active.files || []).length === 0) {
+		statusEl.textContent = "画像をチェックして作品を分割できます。";
+		splitBtn.disabled = true;
+		return;
+	}
+	if (active.status === "saved") {
+		statusEl.textContent = "登録済み作品は画像分割できません。";
+		splitBtn.disabled = true;
+		return;
+	}
+
+	const total = active.files.length;
+	statusEl.textContent =
+		selectedCount > 0
+			? `${selectedCount}枚選択中（全${total}枚）`
+			: `この作品の画像 ${total}枚。分割したい画像をチェックしてください。`;
+	splitBtn.disabled = selectedCount === 0 || selectedCount >= total;
+}
+
+function renderUploadDraftList() {
+	const root = qs("#upload-draft-list");
+	const statusEl = qs("#upload-draft-status");
+	const mergeBtn = qs("#upload-draft-merge");
+	if (!root || !statusEl || !mergeBtn) return;
+
+	normalizeUploadSelections();
+	root.innerHTML = "";
+
+	const drafts = state.upload.drafts;
+	if (drafts.length === 0) {
+		root.appendChild(el("div", { class: "subnote", text: "作品キューは空です。" }));
+		statusEl.textContent = "画像を選択すると作品キューが作成されます。";
+		mergeBtn.disabled = true;
+		return;
+	}
+
+	const totalFiles = drafts.reduce((sum, draft) => sum + (draft.files?.length || 0), 0);
+	const pendingCount = drafts.filter((draft) => draft.status !== "saved").length;
+	statusEl.textContent = `作品 ${drafts.length}件 / 画像 ${totalFiles}枚 / 未登録 ${pendingCount}件`;
+	const mergeCandidates = drafts.filter((draft) => state.upload.selectedDraftIds.includes(draft.id) && draft.status !== "saved");
+	mergeBtn.disabled = mergeCandidates.length < 2;
+
+	drafts.forEach((draft, idx) => {
+		const card = el("div", { class: `upload-draft-card${draft.id === state.upload.activeDraftId ? " is-active" : ""}` });
+		const title = getUploadDraftDisplayTitle(draft, idx);
+		const statusLabel = getUploadDraftStatusLabel(draft);
+		const metaParts = [statusLabel, `${draft.files?.length || 0}枚`, draft.completedDate || "-", draft.classroom || "-"].filter(Boolean);
+		if (draft.error && draft.status === "error") metaParts.push(draft.error);
+
+		const checkWrap = el("label", { class: "checkbox checkbox--sm" });
+		const check = el("input", { type: "checkbox" });
+		check.checked = state.upload.selectedDraftIds.includes(draft.id);
+		if (draft.status === "saved") check.disabled = true;
+		check.addEventListener("change", () => {
+			const selected = new Set(state.upload.selectedDraftIds);
+			if (check.checked) selected.add(draft.id);
+			else selected.delete(draft.id);
+			state.upload.selectedDraftIds = Array.from(selected);
+			renderUploadDraftList();
+		});
+		checkWrap.appendChild(check);
+		checkWrap.appendChild(el("span", { text: "統合対象" }));
+
+		const editBtn = el("button", { type: "button", class: "btn", text: draft.id === state.upload.activeDraftId ? "編集中" : "編集" });
+		if (draft.id === state.upload.activeDraftId) editBtn.disabled = true;
+		editBtn.addEventListener("click", () => {
+			setActiveUploadDraft(draft.id, { saveCurrent: true });
+		});
+
+		card.appendChild(el("div", { class: "upload-draft-card__head" }, [checkWrap, editBtn]));
+		card.appendChild(el("div", { class: "upload-draft-card__title", text: title }));
+		card.appendChild(el("div", { class: "upload-draft-card__meta", text: metaParts.join(" / ") }));
+
+		const thumbs = el("div", { class: "upload-draft-card__thumbs" });
+		(draft.files || []).slice(0, 8).forEach((entry) => {
+			const thumb = el("div", { class: "upload-draft-card__thumb" });
+			thumb.appendChild(el("img", { src: entry.previewUrl, alt: "" }));
+			thumbs.appendChild(thumb);
+		});
+		card.appendChild(thumbs);
+
+		root.appendChild(card);
+	});
+}
+
+function saveActiveDraftFromForm() {
+	const active = getActiveUploadDraft();
+	if (!active) return;
+
+	active.coverIndex = state.upload.coverIndex;
+	active.completedDate = trimText(qs("#upload-completed-date")?.value);
+	active.groupValue = trimText(qs("#upload-group")?.value);
+	active.classroom = normalizeClassroom(qs("#upload-classroom")?.value);
+	active.venue = trimText(qs("#upload-venue")?.value);
+	active.authorIds = getSelectedAuthorIds(qs("#upload-author"));
+	active.title = trimText(qs("#upload-title")?.value);
+	active.caption = trimText(qs("#upload-caption")?.value);
+	active.explicitTagIds = Array.isArray(state.upload.explicitTagIds) ? state.upload.explicitTagIds.slice() : [];
+	active.ready = Boolean(qs("#upload-ready")?.checked);
+	active.readyTouched = Boolean(state.upload.readyTouched);
+	active.authorCandidates = Array.isArray(state.upload.authorCandidates) ? state.upload.authorCandidates.slice() : [];
+	normalizeUploadDraftCoverIndex(active);
+}
+
+function applyDraftToUploadForm(draft) {
+	const dateInput = qs("#upload-completed-date");
+	const classroomInput = qs("#upload-classroom");
+	const venueInput = qs("#upload-venue");
+	const titleInput = qs("#upload-title");
+	const captionInput = qs("#upload-caption");
+	const readyCb = qs("#upload-ready");
+	const authorSearch = qs("#upload-author-search");
+	const authorSearchResults = qs("#upload-author-search-results");
+	const exifNote = qs("#upload-exif-note");
+	const status = qs("#upload-status");
+
+	const targetDraft = draft || null;
+	state.upload.files = targetDraft?.files ? targetDraft.files.slice() : [];
+	state.upload.coverIndex = targetDraft?.coverIndex || 0;
+	state.upload.explicitTagIds = targetDraft?.explicitTagIds ? targetDraft.explicitTagIds.slice() : [];
+	state.upload.readyTouched = Boolean(targetDraft?.readyTouched);
+	state.upload.authorCandidates = targetDraft?.authorCandidates ? targetDraft.authorCandidates.slice() : [];
+	state.upload.selectedFileIds = [];
+
+	if (titleInput) titleInput.value = targetDraft?.title || "";
+	if (captionInput) captionInput.value = targetDraft?.caption || "";
+	if (dateInput) dateInput.value = targetDraft?.completedDate || "";
+	if (classroomInput) classroomInput.value = targetDraft?.classroom || "";
+	if (venueInput) venueInput.value = targetDraft?.venue || "";
+	if (authorSearch) authorSearch.value = "";
+	if (authorSearchResults) authorSearchResults.innerHTML = "";
+	if (status) status.textContent = "";
+
+	if (targetDraft) {
+		updateUploadGroupAndAuthorCandidates({
+			preferredGroupValue: targetDraft.groupValue || "",
+			preferredAuthorIds: targetDraft.authorIds || [],
+		});
+	} else {
+		updateUploadGroupAndAuthorCandidates({ preferredGroupValue: "", preferredAuthorIds: [] });
+	}
+
+	if (typeof state.upload.setTagState === "function") {
+		state.upload.setTagState(targetDraft?.explicitTagIds || []);
+	}
+
+	if (readyCb) {
+		if (targetDraft) {
+			readyCb.checked = targetDraft.readyTouched ? Boolean(targetDraft.ready) : computeUploadReadyDefault();
+		} else {
+			readyCb.checked = false;
+		}
+	}
+
+	if (exifNote) exifNote.textContent = targetDraft?.completedDate ? `完成日: ${targetDraft.completedDate}` : "";
+
+	renderUploadPreviews();
+	syncUploadAuthorUi();
+}
+
+function setActiveUploadDraft(draftId, { saveCurrent = true } = {}) {
+	if (saveCurrent) saveActiveDraftFromForm();
+
+	const target = getUploadDraftById(draftId);
+	if (!target) return;
+	state.upload.activeDraftId = target.id;
+	applyDraftToUploadForm(target);
+	renderUploadDraftList();
+}
+
+function renderUploadPreviews() {
+	const root = qs("#upload-previews");
+	if (!root) return;
+	root.innerHTML = "";
+
+	const active = getActiveUploadDraft();
+	if (!active) {
+		updateUploadSelectionStatusText();
+		return;
+	}
+
+	normalizeUploadSelections();
+	state.upload.files = active.files;
+	state.upload.coverIndex = active.coverIndex;
+
+	(active.files || []).forEach((entry, idx) => {
+		const item = el("div", {
+			class: `preview${idx === active.coverIndex ? " is-cover" : ""}${state.upload.selectedFileIds.includes(entry.id) ? " is-selected" : ""}`,
+		});
+		const img = el("img", { src: entry.previewUrl, alt: "" });
+		const check = el("input", { class: "preview__select", type: "checkbox" });
+		check.checked = state.upload.selectedFileIds.includes(entry.id);
+		check.addEventListener("click", (e) => e.stopPropagation());
+		check.addEventListener("change", () => {
+			const selected = new Set(state.upload.selectedFileIds);
+			if (check.checked) selected.add(entry.id);
+			else selected.delete(entry.id);
+			state.upload.selectedFileIds = Array.from(selected);
+			renderUploadPreviews();
+		});
+
+		item.appendChild(img);
+		item.appendChild(check);
+		if (idx === active.coverIndex) item.appendChild(el("div", { class: "badge", text: "表紙" }));
+		item.addEventListener("click", () => {
+			active.coverIndex = idx;
+			state.upload.coverIndex = idx;
+			renderUploadPreviews();
+			renderUploadDraftList();
+		});
+		root.appendChild(item);
+	});
+
+	updateUploadSelectionStatusText();
+}
+
+function formatDateYmdInJst(date) {
+	if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: JST_TIME_ZONE,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(date);
+	const byType = new Map(parts.map((part) => [part.type, part.value]));
+	const year = trimText(byType.get("year"));
+	const month = trimText(byType.get("month"));
+	const day = trimText(byType.get("day"));
+	if (!year || !month || !day) return "";
+	return `${year}-${month}-${day}`;
+}
+
+function parseExifDateTimeParts(value) {
+	const m = trimText(value).match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+	if (!m) return null;
+	const year = Number(m[1]);
+	const month = Number(m[2]);
+	const day = Number(m[3]);
+	const hour = Number(m[4]);
+	const minute = Number(m[5]);
+	const second = Number(m[6]);
+	if ([year, month, day, hour, minute, second].some((n) => !Number.isFinite(n))) return null;
+	return { year, month, day, hour, minute, second };
+}
+
+function parseExifOffsetMinutes(value) {
+	const m = trimText(value).match(/^([+-])(\d{2}):?(\d{2})$/);
+	if (!m) return null;
+	const sign = m[1] === "-" ? -1 : 1;
+	const hours = Number(m[2]);
+	const minutes = Number(m[3]);
+	if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+	return sign * (hours * 60 + minutes);
+}
+
+function toJstYmdFromExif(dateTimeValue, offsetValue = "") {
+	const parts = parseExifDateTimeParts(dateTimeValue);
+	if (!parts) return "";
+	const exifDate = `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+	const offsetMinutes = parseExifOffsetMinutes(offsetValue);
+	if (offsetMinutes === null) return exifDate;
+	const utcMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - offsetMinutes * 60 * 1000;
+	return formatDateYmdInJst(new Date(utcMs)) || exifDate;
+}
+
+function getExifDateInfoFromJpeg(arrayBuffer) {
 	const view = new DataView(arrayBuffer);
 	const getAscii = (offset, len) => {
 		let out = "";
@@ -1224,8 +1651,8 @@ function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
 		return out;
 	};
 
-	if (view.byteLength < 4) return "";
-	if (view.getUint16(0) !== 0xffd8) return "";
+	if (view.byteLength < 4) return null;
+	if (view.getUint16(0) !== 0xffd8) return null;
 
 	let offset = 2;
 	while (offset + 4 < view.byteLength) {
@@ -1246,27 +1673,12 @@ function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
 				const readU16 = (o) => (little ? view.getUint16(o, true) : view.getUint16(o, false));
 				const readU32 = (o) => (little ? view.getUint32(o, true) : view.getUint32(o, false));
 
-				if (readU16(tiffStart + 2) !== 42) return "";
+				if (readU16(tiffStart + 2) !== 42) return null;
 				const ifd0Offset = readU32(tiffStart + 4);
 				let ifdOffset = tiffStart + ifd0Offset;
-				if (ifdOffset + 2 > view.byteLength) return "";
+				if (ifdOffset + 2 > view.byteLength) return null;
 				const entries = readU16(ifdOffset);
 				ifdOffset += 2;
-
-				let exifIfdPtr = 0;
-				for (let i = 0; i < entries; i += 1) {
-					const entryOffset = ifdOffset + i * 12;
-					const tag = readU16(entryOffset);
-					if (tag === 0x8769) {
-						exifIfdPtr = readU32(entryOffset + 8);
-						break;
-					}
-				}
-				if (!exifIfdPtr) return "";
-				const exifIfdOffset = tiffStart + exifIfdPtr;
-				if (exifIfdOffset + 2 > view.byteLength) return "";
-				const exifEntries = readU16(exifIfdOffset);
-				let exifBase = exifIfdOffset + 2;
 
 				const readAsciiValue = (entryOffset) => {
 					const type = readU16(entryOffset + 2);
@@ -1278,30 +1690,38 @@ function getExifDateTimeOriginalFromJpeg(arrayBuffer) {
 					return getAscii(dataOffset, count - 1);
 				};
 
-				let dateTimeOriginal = "";
-				for (let i = 0; i < exifEntries; i += 1) {
-					const entryOffset = exifBase + i * 12;
+				let exifIfdPtr = 0;
+				let dateTime = "";
+				for (let i = 0; i < entries; i += 1) {
+					const entryOffset = ifdOffset + i * 12;
 					const tag = readU16(entryOffset);
-					if (tag === 0x9003) {
-						dateTimeOriginal = readAsciiValue(entryOffset);
-						break;
+					if (tag === 0x8769) {
+						exifIfdPtr = readU32(entryOffset + 8);
 					}
+					if (tag === 0x0132) dateTime = readAsciiValue(entryOffset);
 				}
-				if (dateTimeOriginal) return dateTimeOriginal;
 
-				for (let i = 0; i < exifEntries; i += 1) {
-					const entryOffset = exifBase + i * 12;
-					const tag = readU16(entryOffset);
-					if (tag === 0x0132) {
-						return readAsciiValue(entryOffset);
+				let offsetText = "";
+				if (exifIfdPtr) {
+					const exifIfdOffset = tiffStart + exifIfdPtr;
+					if (exifIfdOffset + 2 > view.byteLength) return null;
+					const exifEntries = readU16(exifIfdOffset);
+					const exifBase = exifIfdOffset + 2;
+					for (let i = 0; i < exifEntries; i += 1) {
+						const entryOffset = exifBase + i * 12;
+						const tag = readU16(entryOffset);
+						if (tag === 0x9003) dateTime = readAsciiValue(entryOffset) || dateTime;
+						if (tag === 0x9011) offsetText = readAsciiValue(entryOffset) || offsetText;
+						if (tag === 0x9010) offsetText = readAsciiValue(entryOffset) || offsetText;
 					}
 				}
+				if (dateTime) return { dateTime, offsetText };
 			}
 		}
 
 		offset += size;
 	}
-	return "";
+	return null;
 }
 
 async function inferCompletedDateFromFiles(files) {
@@ -1311,11 +1731,18 @@ async function inferCompletedDateFromFiles(files) {
 	const first = files[0];
 	try {
 		const head = await first.slice(0, 256 * 1024).arrayBuffer();
-		const exif = getExifDateTimeOriginalFromJpeg(head);
-		if (exif) {
-			const ymd = exif.slice(0, 10).replaceAll(":", "-");
-			if (note) note.textContent = `EXIF DateTimeOriginal: ${exif}`;
-			return ymd;
+		const exif = getExifDateInfoFromJpeg(head);
+		if (exif?.dateTime) {
+			const ymd = toJstYmdFromExif(exif.dateTime, exif.offsetText);
+			if (note) {
+				const offset = trimText(exif.offsetText);
+				const extra = offset ? ` / Offset: ${offset}` : "";
+				note.textContent = `EXIF: ${exif.dateTime}${extra} -> JST日付 ${ymd || "-"}`;
+			}
+			if (ymd) return ymd;
+		}
+		if (note && exif) {
+			note.textContent = "EXIF日時は見つかりましたが形式を解釈できませんでした。";
 		}
 	} catch {
 		// noop
@@ -1323,8 +1750,8 @@ async function inferCompletedDateFromFiles(files) {
 
 	const fallback = first.lastModified ? new Date(first.lastModified) : null;
 	if (fallback && !Number.isNaN(fallback.getTime())) {
-		const ymd = fallback.toISOString().slice(0, 10);
-		if (note) note.textContent = `EXIFなしのため lastModified から推定: ${ymd}`;
+		const ymd = formatDateYmdInJst(fallback);
+		if (note) note.textContent = `EXIFなしのため lastModified からJST推定: ${ymd || "-"}`;
 		return ymd;
 	}
 
@@ -1332,13 +1759,22 @@ async function inferCompletedDateFromFiles(files) {
 	return "";
 }
 
-function updateUploadGroupAndAuthorCandidates() {
+function updateUploadGroupAndAuthorCandidates({ preferredGroupValue = "", preferredAuthorIds = null } = {}) {
 	const dateInput = qs("#upload-completed-date");
 	const ymd = String(dateInput.value || "").trim();
 
 	const groupSelect = qs("#upload-group");
 	const authorSelect = qs("#upload-author");
-	const authorCandidateNotesRoot = qs("#upload-author-candidate-notes");
+	if (!groupSelect || !authorSelect) return;
+
+	const selectedAuthorIds = Array.isArray(preferredAuthorIds)
+		? [...new Set(preferredAuthorIds.map(trimText).filter(Boolean))]
+		: getSelectedAuthorIds(authorSelect);
+	const selectedLabelsById = new Map(
+		Array.from(authorSelect.options || [])
+			.map((option) => [trimText(option.value), trimText(option.textContent)])
+			.filter(([id, label]) => id && label),
+	);
 
 	const groups = ymd ? getParticipantsGroups(ymd) : [];
 	populateSelect(groupSelect, {
@@ -1349,36 +1785,50 @@ function updateUploadGroupAndAuthorCandidates() {
 		})),
 	});
 
+	if (groups.length > 0 && trimText(preferredGroupValue)) {
+		const targetValue = trimText(preferredGroupValue);
+		const exists = groups.some((_, idx) => String(idx) === targetValue);
+		if (exists) groupSelect.value = targetValue;
+	}
+
 	let selectedGroup = null;
-	if (groups.length === 1) selectedGroup = groups[0];
+	if (groups.length === 1) {
+		selectedGroup = groups[0];
+		groupSelect.value = "0";
+	}
 	if (groups.length > 1 && groupSelect.value) selectedGroup = groups[Number(groupSelect.value)] || null;
 
 	const venueFromGroup = selectedGroup?.venue || "";
 	const classroomFromGroup = selectedGroup?.classroom || "";
 
 	const classroomSelect = qs("#upload-classroom");
-	if (classroomFromGroup) classroomSelect.value = normalizeClassroom(classroomFromGroup);
+	if (classroomSelect && classroomFromGroup) classroomSelect.value = normalizeClassroom(classroomFromGroup);
 
 	const venueSelect = qs("#upload-venue");
 	const venueWarning = qs("#upload-venue-warning");
-	if (venueFromGroup) {
+	if (venueSelect && venueFromGroup) {
 		const options = Array.from(venueSelect.options).map((o) => o.value).filter(Boolean);
 		if (options.includes(venueFromGroup)) {
 			venueSelect.value = venueFromGroup;
-			venueWarning.hidden = true;
-			venueWarning.textContent = "";
+			if (venueWarning) {
+				venueWarning.hidden = true;
+				venueWarning.textContent = "";
+			}
 		} else {
 			venueSelect.value = "";
-			venueWarning.hidden = false;
-			venueWarning.textContent = `会場「${venueFromGroup}」はNotionのSelect候補に存在しないため保存しません。手動選択してください。`;
+			if (venueWarning) {
+				venueWarning.hidden = false;
+				venueWarning.textContent = `会場「${venueFromGroup}」はNotionのSelect候補に存在しないため保存しません。手動選択してください。`;
+			}
 		}
 	} else {
-		venueWarning.hidden = true;
-		venueWarning.textContent = "";
+		if (venueWarning) {
+			venueWarning.hidden = true;
+			venueWarning.textContent = "";
+		}
 	}
 
 	const participants = Array.isArray(selectedGroup?.participants) ? selectedGroup.participants : [];
-	const selectedAuthorIds = getSelectedAuthorIds(authorSelect);
 	const candidates = participants
 		.map((participant) => buildAuthorCandidateFromParticipant(participant, { group: selectedGroup }))
 		.filter(Boolean);
@@ -1391,10 +1841,148 @@ function updateUploadGroupAndAuthorCandidates() {
 	options.forEach((o) => authorSelect.appendChild(el("option", { value: o.value, text: o.label })));
 	for (const selectedId of selectedAuthorIds) {
 		const record = getStudentRecordByAnyId(selectedId);
-		if (record) ensureAuthorOption(authorSelect, record);
+		if (record) {
+			ensureAuthorOption(authorSelect, record);
+			continue;
+		}
+		const fallbackLabel = selectedLabelsById.get(selectedId);
+		if (fallbackLabel) {
+			authorSelect.appendChild(el("option", { value: selectedId, text: fallbackLabel }));
+		}
 	}
 	setSelectedAuthorIds(authorSelect, selectedAuthorIds);
-	renderAuthorCandidateNotes(authorCandidateNotesRoot, candidates);
+	state.upload.authorCandidates = candidates;
+	const active = getActiveUploadDraft();
+	if (active) {
+		active.groupValue = trimText(groupSelect.value);
+		active.authorCandidates = candidates.slice();
+	}
+	syncUploadAuthorUi();
+}
+
+function clearUploadSelectedFiles() {
+	const allFiles = state.upload.drafts.flatMap((draft) => draft.files || []);
+	disposeUploadFiles(allFiles);
+	state.upload.drafts = [];
+	state.upload.activeDraftId = "";
+	state.upload.selectedDraftIds = [];
+	state.upload.selectedFileIds = [];
+	state.upload.files = [];
+	state.upload.coverIndex = 0;
+	state.upload.explicitTagIds = [];
+	state.upload.readyTouched = false;
+	state.upload.authorCandidates = [];
+	if (typeof state.upload.setTagState === "function") state.upload.setTagState([]);
+	renderUploadDraftList();
+	renderUploadPreviews();
+}
+
+function resetUploadFormForNextEntry(statusText = "登録完了。次の作品を登録できます。") {
+	const form = qs("#upload-form");
+	const filesInput = qs("#upload-files");
+	const status = qs("#upload-status");
+	const exifNote = qs("#upload-exif-note");
+	const authorSearch = qs("#upload-author-search");
+	const authorSearchResults = qs("#upload-author-search-results");
+
+	clearUploadSelectedFiles();
+	if (form) form.reset();
+	state.upload.explicitTagIds = [];
+	state.upload.readyTouched = false;
+	state.upload.authorCandidates = [];
+	if (typeof state.upload.setTagState === "function") state.upload.setTagState([]);
+
+	if (exifNote) exifNote.textContent = "";
+	if (authorSearch) authorSearch.value = "";
+	if (authorSearchResults) authorSearchResults.innerHTML = "";
+	if (filesInput) filesInput.value = "";
+
+	updateUploadGroupAndAuthorCandidates({ preferredGroupValue: "", preferredAuthorIds: [] });
+
+	if (status) status.textContent = statusText;
+	if (filesInput) filesInput.focus();
+}
+
+function createUploadDraftsFromFiles(files, { completedDate = "", classroom = "", venue = "" } = {}) {
+	return files.map((file) =>
+		createUploadDraft([createUploadFileEntry(file)], {
+			completedDate,
+			classroom,
+			venue,
+			ready: false,
+			readyTouched: false,
+			status: "pending",
+		}),
+	);
+}
+
+function splitSelectedFilesFromActiveDraft() {
+	saveActiveDraftFromForm();
+	const active = getActiveUploadDraft();
+	if (!active) return showToast("作品を選択してください");
+	if (active.status === "saved") return showToast("登録済み作品は分割できません。");
+
+	const selectedSet = new Set(state.upload.selectedFileIds);
+	const picked = active.files.filter((entry) => selectedSet.has(entry.id));
+	if (picked.length === 0) return showToast("分割する画像を選択してください");
+	if (picked.length >= active.files.length) return showToast("全画像選択は分割できません。1枚以上は元作品に残してください。");
+
+	active.files = active.files.filter((entry) => !selectedSet.has(entry.id));
+	normalizeUploadDraftCoverIndex(active);
+	active.status = active.status === "saved" ? "pending" : active.status;
+	active.error = "";
+
+	const newDraft = createUploadDraft(picked, {
+		completedDate: active.completedDate,
+		groupValue: active.groupValue,
+		classroom: active.classroom,
+		venue: active.venue,
+		authorIds: active.authorIds,
+		title: "",
+		caption: "",
+		explicitTagIds: [],
+		ready: false,
+		readyTouched: false,
+		authorCandidates: active.authorCandidates,
+		status: "pending",
+	});
+
+	const activeIndex = state.upload.drafts.findIndex((draft) => draft.id === active.id);
+	if (activeIndex >= 0) state.upload.drafts.splice(activeIndex + 1, 0, newDraft);
+	else state.upload.drafts.push(newDraft);
+
+	state.upload.selectedFileIds = [];
+	state.upload.selectedDraftIds = [];
+	setActiveUploadDraft(newDraft.id, { saveCurrent: false });
+	showToast("選択画像を新しい作品に分割しました");
+}
+
+function mergeSelectedUploadDrafts() {
+	saveActiveDraftFromForm();
+	const selected = state.upload.selectedDraftIds
+		.map((id) => getUploadDraftById(id))
+		.filter(Boolean)
+		.filter((draft) => draft.status !== "saved");
+	if (selected.length < 2) return showToast("統合する作品を2件以上選択してください");
+
+	const active = getActiveUploadDraft();
+	const primary = active && selected.some((draft) => draft.id === active.id) ? active : selected[0];
+	const mergeIds = new Set(selected.map((draft) => draft.id));
+	const mergedFiles = [];
+	for (const draft of selected) {
+		mergedFiles.push(...(draft.files || []));
+	}
+	primary.files = mergedFiles;
+	normalizeUploadDraftCoverIndex(primary);
+	primary.status = "pending";
+	primary.error = "";
+	primary.notionWorkId = "";
+
+	state.upload.drafts = state.upload.drafts.filter((draft) => !mergeIds.has(draft.id) || draft.id === primary.id);
+	state.upload.selectedDraftIds = [];
+	state.upload.selectedFileIds = [];
+	setActiveUploadDraft(primary.id, { saveCurrent: false });
+	showToast(`${selected.length}件を1件に統合しました`);
 }
 
 function initUpload() {
@@ -1415,24 +2003,53 @@ function initUpload() {
 
 	const filesInput = qs("#upload-files");
 	filesInput.addEventListener("change", async () => {
-		state.upload.files.forEach((f) => URL.revokeObjectURL(f.previewUrl));
-		state.upload.files = Array.from(filesInput.files || []).map((f) => ({
-			file: f,
-			previewUrl: URL.createObjectURL(f),
-		}));
-		state.upload.coverIndex = 0;
-		renderUploadPreviews();
+		clearUploadSelectedFiles();
+		const files = Array.from(filesInput.files || []);
+		if (files.length === 0) {
+			resetUploadFormForNextEntry("画像を選択してください。");
+			return;
+		}
 
-		const ymd = await inferCompletedDateFromFiles(state.upload.files.map((x) => x.file));
-		const dateInput = qs("#upload-completed-date");
-		if (ymd && !dateInput.value) dateInput.value = ymd;
-		updateUploadGroupAndAuthorCandidates();
+		const inferredDate = await inferCompletedDateFromFiles(files);
+		const initialDate = inferredDate || fromQuery || "";
+		const drafts = createUploadDraftsFromFiles(files, {
+			completedDate: initialDate,
+			classroom: normalizeClassroom(classroomSelect?.value || ""),
+			venue: trimText(venueSelect?.value),
+		});
+		state.upload.drafts = drafts;
+		state.upload.activeDraftId = drafts[0]?.id || "";
+		state.upload.selectedDraftIds = [];
+		state.upload.selectedFileIds = [];
+		renderUploadDraftList();
+		if (drafts[0]) {
+			setActiveUploadDraft(drafts[0].id, { saveCurrent: false });
+			const status = qs("#upload-status");
+			if (status) status.textContent = `${drafts.length}作品分の下書きを作成しました。作品ごとに内容を確認して登録してください。`;
+		}
 	});
 
-	dateInput.addEventListener("change", () => updateUploadGroupAndAuthorCandidates());
+	dateInput.addEventListener("change", () => {
+		state.upload.readyTouched = false;
+		updateUploadGroupAndAuthorCandidates();
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
+	});
 
 	const groupSelect = qs("#upload-group");
-	groupSelect.addEventListener("change", () => updateUploadGroupAndAuthorCandidates());
+	groupSelect.addEventListener("change", () => {
+		updateUploadGroupAndAuthorCandidates();
+		saveActiveDraftFromForm();
+	});
+
+	classroomSelect?.addEventListener("change", () => {
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
+	});
+	venueSelect?.addEventListener("change", () => {
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
+	});
 
 	initStudentSearch();
 	initTagInput("upload");
@@ -1441,19 +2058,52 @@ function initUpload() {
 	const syncReady = () => {
 		if (state.upload.readyTouched) return;
 		readyCb.checked = computeUploadReadyDefault();
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
 	};
 	readyCb.addEventListener("change", () => {
 		state.upload.readyTouched = true;
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
 	});
-	qsa("#upload-title,#upload-author").forEach((elx) => elx.addEventListener("change", syncReady));
+	qs("#upload-title").addEventListener("input", () => {
+		syncReady();
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
+	});
+	qs("#upload-caption").addEventListener("change", () => {
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
+	});
+	qs("#upload-author").addEventListener("change", () => {
+		syncReady();
+		syncUploadAuthorUi();
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
+	});
+
+	const splitBtn = qs("#upload-split-selected");
+	if (splitBtn) splitBtn.addEventListener("click", () => splitSelectedFilesFromActiveDraft());
+
+	const mergeBtn = qs("#upload-draft-merge");
+	if (mergeBtn) mergeBtn.addEventListener("click", () => mergeSelectedUploadDrafts());
+
+	const submitAllBtn = qs("#upload-submit-all");
+	if (submitAllBtn) {
+		submitAllBtn.addEventListener("click", async () => {
+			await submitUpload({ all: true });
+		});
+	});
 
 	const form = qs("#upload-form");
 	form.addEventListener("submit", async (e) => {
 		e.preventDefault();
-		await submitUpload();
+		await submitUpload({ all: false });
 	});
 
-	updateUploadGroupAndAuthorCandidates();
+	updateUploadGroupAndAuthorCandidates({ preferredGroupValue: "", preferredAuthorIds: [] });
+	renderUploadDraftList();
+	renderUploadPreviews();
 }
 
 function initStudentSearch() {
@@ -1474,6 +2124,7 @@ function initStudentSearch() {
 				const selected = new Set(getSelectedAuthorIds(authorSelect));
 				selected.add(s.notionId);
 				setSelectedAuthorIds(authorSelect, Array.from(selected));
+				authorSelect.dispatchEvent(new Event("change", { bubbles: true }));
 				resultsRoot.innerHTML = "";
 				input.value = "";
 			});
@@ -1552,22 +2203,31 @@ function initTagInput(prefix) {
 	};
 
 	const setState = (explicitIds) => {
-		state.upload.explicitTagIds = explicitIds;
-		const derivedIds = computeDerivedParentTagIds(explicitIds);
+		const normalizedExplicit = Array.from(
+			new Set((Array.isArray(explicitIds) ? explicitIds : []).map((id) => resolveMergedTagId(trimText(id))).filter(Boolean)),
+		);
+		state.upload.explicitTagIds = normalizedExplicit;
+		const derivedIds = computeDerivedParentTagIds(normalizedExplicit);
 		renderChips(chipsRoot, {
-			explicitIds,
+			explicitIds: normalizedExplicit,
 			derivedIds,
 			onRemove: (id) => {
-				setState(explicitIds.filter((x) => x !== id));
+				setState(normalizedExplicit.filter((x) => x !== id));
 			},
 		});
 		derivedNote.textContent = derivedIds.length > 0 ? `自動付与（親タグ）: ${derivedIds.length}件` : "";
-		renderChildSuggest(childSuggestRoot, { explicitIds, derivedIds, onAdd: (id) => setState(Array.from(new Set([...explicitIds, id]))) });
+		renderChildSuggest(childSuggestRoot, {
+			explicitIds: normalizedExplicit,
+			derivedIds,
+			onAdd: (id) => setState(Array.from(new Set([...normalizedExplicit, id]))),
+		});
 		refreshTitleTag();
 		if (!state.upload.readyTouched) {
 			const readyCb = qs("#upload-ready");
 			if (readyCb) readyCb.checked = computeUploadReadyDefault();
 		}
+		saveActiveDraftFromForm();
+		renderUploadDraftList();
 	};
 
 	const renderSuggest = (query) => {
@@ -1620,7 +2280,13 @@ function initTagInput(prefix) {
 	const titleEl = qs("#upload-title");
 	if (titleEl) titleEl.addEventListener("input", debounce(refreshTitleTag, 200));
 
-	setState([]);
+	state.upload.setTagState = (ids = []) => {
+		queryEl.value = "";
+		suggestRoot.innerHTML = "";
+		setState(ids);
+	};
+	state.upload.resetTagState = () => state.upload.setTagState([]);
+	state.upload.resetTagState();
 }
 
 function renderChildSuggest(root, { explicitIds, derivedIds, onAdd }) {
@@ -1652,57 +2318,64 @@ function renderChildSuggest(root, { explicitIds, derivedIds, onAdd }) {
 }
 
 function computeUploadReadyDefault() {
-	const title = qs("#upload-title").value.trim();
+	const title = trimText(qs("#upload-title")?.value);
 	const authorIds = getSelectedAuthorIds(qs("#upload-author"));
 	const tags = state.upload.explicitTagIds || [];
 	return Boolean(title && authorIds.length > 0 && tags.length > 0);
 }
 
-async function submitUpload() {
-	const status = qs("#upload-status");
-	const submit = qs("#upload-submit");
-	const readyCb = qs("#upload-ready");
+function getOrderedFilesForUploadDraft(draft) {
+	const files = Array.isArray(draft?.files) ? draft.files.slice() : [];
+	if (files.length <= 1) return files;
+	const coverIndex = Math.max(0, Math.min(Number(draft.coverIndex) || 0, files.length - 1));
+	const [cover] = files.splice(coverIndex, 1);
+	files.unshift(cover);
+	return files;
+}
 
-	const files = state.upload.files.map((x) => x.file);
-	if (files.length === 0) return showToast("画像を選択してください");
-
-	const completedDate = qs("#upload-completed-date").value.trim();
-	if (!completedDate) return showToast("完成日を入力してください");
-
-	const classroom = normalizeClassroom(qs("#upload-classroom").value);
-	if (!classroom) return showToast("教室を選択してください");
-
-	const venue = qs("#upload-venue").value || "";
-
-	const authorIds = getSelectedAuthorIds(qs("#upload-author"));
-	const invalidAuthorIds = authorIds.filter((id) => !isNotionIdLike(id));
+function validateUploadDraft(draft) {
+	if (!draft || (draft.files || []).length === 0) return "画像を選択してください";
+	if (!trimText(draft.completedDate)) return "完成日を入力してください";
+	const classroom = normalizeClassroom(draft.classroom);
+	if (!classroom) return "教室を選択してください";
+	const invalidAuthorIds = (draft.authorIds || []).filter((id) => !isNotionIdLike(id));
 	if (invalidAuthorIds.length > 0) {
-		return showToast("作者IDがNotion page idではありません。students_index.jsonに notion_id を含めるか、Notion検索で選択してください。");
+		return "作者IDがNotion page idではありません。students_index.jsonに notion_id を含めるか、Notion検索で選択してください。";
 	}
+	return "";
+}
 
-	const title = qs("#upload-title").value.trim();
-	const caption = qs("#upload-caption").value.trim();
+async function submitSingleUploadDraft(draft, { statusEl, allowInteractiveRecovery = true } = {}) {
+	const validationError = validateUploadDraft(draft);
+	if (validationError) throw new Error(validationError);
 
-	const explicitIds = state.upload.explicitTagIds;
+	const completedDate = trimText(draft.completedDate);
+	const classroom = normalizeClassroom(draft.classroom);
+	const venue = trimText(draft.venue);
+	const title = trimText(draft.title);
+	const caption = trimText(draft.caption);
+	const authorIds = Array.isArray(draft.authorIds) ? draft.authorIds.slice() : [];
+
+	const explicitIds = Array.isArray(draft.explicitTagIds) ? draft.explicitTagIds.slice() : [];
 	const derivedIds = computeDerivedParentTagIds(explicitIds);
 	const tagIds = Array.from(new Set([...explicitIds, ...derivedIds]));
+	const ready = Boolean(draft.ready);
 
-	const ready = readyCb.checked;
+	draft.status = "uploading";
+	draft.error = "";
+	renderUploadDraftList();
 
-	status.textContent = "アップロード準備中…";
-	submit.disabled = true;
+	const orderedFiles = getOrderedFilesForUploadDraft(draft);
+	if (statusEl) statusEl.textContent = `${title || "作品"}: R2へアップロード中…`;
 
-	const ordered = [...state.upload.files];
-	const [cover] = ordered.splice(state.upload.coverIndex, 1);
-	ordered.unshift(cover);
-
+	let filesOut = [];
 	try {
 		const form = new FormData();
-		ordered.forEach((x) => form.append("files", x.file));
+		orderedFiles.forEach((entry) => form.append("files", entry.file));
 		form.append("prefix", `uploads/${completedDate}`);
 		const uploaded = await apiFetch("/admin/r2/upload", { method: "POST", body: form });
-		const filesOut = uploaded?.files || [];
-		status.textContent = `R2保存OK（${filesOut.length}枚）。Notion作成中…`;
+		filesOut = uploaded?.files || [];
+		if (statusEl) statusEl.textContent = `${title || "作品"}: Notionへ登録中…`;
 
 		const createPayload = {
 			title,
@@ -1713,7 +2386,7 @@ async function submitUpload() {
 			caption,
 			tagIds,
 			ready,
-			images: filesOut.map((f) => ({ url: f.url, name: f.name })),
+			images: filesOut.map((file) => ({ url: file.url, name: file.name })),
 		};
 
 		const tryCreate = async () =>
@@ -1723,18 +2396,19 @@ async function submitUpload() {
 				body: JSON.stringify(createPayload),
 			});
 
-		let created;
+		let created = null;
 		try {
 			created = await tryCreate();
 		} catch (err) {
 			console.error(err);
+			if (!allowInteractiveRecovery) throw err;
 			const retry = confirm("R2保存は成功しています。Notion作成を再試行しますか？（OK=再試行 / キャンセル=R2削除）");
 			if (retry) {
-				status.textContent = "Notion作成を再試行中…";
+				if (statusEl) statusEl.textContent = `${title || "作品"}: Notion作成を再試行中…`;
 				created = await tryCreate();
 			} else {
-				const keys = filesOut.map((f) => f.key).filter(Boolean);
-				if (keys.length) {
+				const keys = filesOut.map((file) => file.key).filter(Boolean);
+				if (keys.length > 0) {
 					await apiFetch("/admin/r2/delete", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
@@ -1746,15 +2420,93 @@ async function submitUpload() {
 			}
 		}
 
-		status.textContent = `完了（Notion: ${created.id}）`;
-		showToast("登録しました");
-		return;
+		draft.status = "saved";
+		draft.error = "";
+		draft.notionWorkId = trimText(created?.id);
+		state.upload.selectedDraftIds = state.upload.selectedDraftIds.filter((id) => id !== draft.id);
+		if (state.upload.activeDraftId === draft.id) {
+			state.upload.selectedFileIds = [];
+			renderUploadPreviews();
+		}
+		renderUploadDraftList();
+		return created;
 	} catch (err) {
-		console.error(err);
-		status.textContent = `失敗: ${err.message}`;
+		draft.status = "error";
+		draft.error = trimText(err?.message) || "登録に失敗しました";
+		renderUploadDraftList();
+		throw err;
+	}
+}
+
+async function submitUpload({ all = false } = {}) {
+	const status = qs("#upload-status");
+	const submit = qs("#upload-submit");
+	const submitAll = qs("#upload-submit-all");
+
+	saveActiveDraftFromForm();
+	const active = getActiveUploadDraft();
+	if (!active && !all) return showToast("作品を選択してください");
+	if (!all && active?.status === "saved") {
+		if (status) status.textContent = "この作品はすでに登録済みです。";
+		return showToast("この作品はすでに登録済みです。");
+	}
+
+	const targets = all ? state.upload.drafts.filter((draft) => draft.status !== "saved") : [active];
+	if (targets.length === 0) {
+		if (status) status.textContent = "未登録の作品はありません。";
+		return showToast("未登録の作品はありません。");
+	}
+
+	if (status) status.textContent = all ? `一括登録を開始します（${targets.length}件）…` : "登録処理を開始します…";
+	submit.disabled = true;
+	if (submitAll) submitAll.disabled = true;
+
+	let success = 0;
+	let failed = 0;
+	let firstFailedDraft = null;
+
+	try {
+		for (let i = 0; i < targets.length; i += 1) {
+			const draft = targets[i];
+			setActiveUploadDraft(draft.id, { saveCurrent: false });
+			const prefix = all ? `[${i + 1}/${targets.length}] ` : "";
+			if (status) status.textContent = `${prefix}${getUploadDraftDisplayTitle(draft, i)} を登録中…`;
+			try {
+				await submitSingleUploadDraft(draft, { statusEl: status, allowInteractiveRecovery: !all });
+				success += 1;
+			} catch (err) {
+				console.error(err);
+				failed += 1;
+				if (!firstFailedDraft) firstFailedDraft = draft;
+				if (!all) throw err;
+			}
+		}
+	} catch (err) {
+		if (status) status.textContent = `失敗: ${err.message}`;
 		showToast(`失敗: ${err.message}`);
 	} finally {
 		submit.disabled = false;
+		if (submitAll) submitAll.disabled = false;
+	}
+
+	if (all) {
+		if (failed === 0) {
+			if (status) status.textContent = `一括登録完了: ${success}件`;
+			showToast(`一括登録が完了しました（${success}件）`);
+		} else {
+			if (status) status.textContent = `一括登録完了: 成功${success}件 / 失敗${failed}件`;
+			showToast(`一括登録を実行しました（成功${success}件 / 失敗${failed}件）`);
+			if (firstFailedDraft) setActiveUploadDraft(firstFailedDraft.id, { saveCurrent: false });
+		}
+	} else {
+		if (failed === 0 && success === 1) {
+			const activeDraft = getActiveUploadDraft();
+			const notionId = trimText(activeDraft?.notionWorkId);
+			if (status) status.textContent = notionId ? `登録完了（Notion: ${notionId}）` : "登録完了";
+			showToast("登録しました");
+			const nextPending = state.upload.drafts.find((draft) => draft.status !== "saved");
+			if (nextPending) setActiveUploadDraft(nextPending.id, { saveCurrent: false });
+		}
 	}
 }
 
