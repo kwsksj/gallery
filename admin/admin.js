@@ -1146,28 +1146,189 @@ function buildAuthorCandidateFromParticipant(participant, { group = null } = {})
 	};
 }
 
-function renderAuthorCandidateNotes(root, candidates) {
-	if (!root) return;
+function formatCandidateNoteText(value) {
+	const note = trimText(value);
+	return note || "（セッションノート未記入）";
+}
+
+function dispatchAuthorSelectionChange(selectEl) {
+	if (!selectEl) return;
+	selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function getAuthorOptionLabel(selectEl, authorId) {
+	const id = trimText(authorId);
+	if (!id) return "";
+	const option = Array.from(selectEl?.options || []).find((opt) => trimText(opt.value) === id);
+	const optionLabel = trimText(option?.textContent);
+	if (optionLabel) return optionLabel;
+	const record = getStudentRecordByAnyId(id);
+	return trimText(record?.choiceLabel || record?.displayName || id);
+}
+
+function renderAuthorSelectedChips(root, selectEl) {
+	const authorSelect = selectEl;
+	if (!root || !authorSelect) return;
 	root.innerHTML = "";
-	const notes = (Array.isArray(candidates) ? candidates : [])
-		.map((candidate) => ({
-			label: trimText(candidate?.label),
-			note: trimText(candidate?.sessionNote),
-		}))
-		.filter((entry) => entry.label && entry.note);
-	if (notes.length === 0) {
+	const selectedIds = getSelectedAuthorIds(authorSelect);
+	if (selectedIds.length === 0) {
 		root.hidden = true;
 		return;
 	}
 	root.hidden = false;
-	root.appendChild(el("div", { class: "subnote", text: "予約記録のセッションノート" }));
-	notes.forEach((entry) => {
-		root.appendChild(
-			el("div", { class: "candidate-note" }, [
-				el("div", { class: "candidate-note__name", text: entry.label }),
-				el("div", { class: "candidate-note__text", text: entry.note }),
-			]),
-		);
+	selectedIds.forEach((authorId) => {
+		const chip = el("span", { class: "chip chip--author-selected" });
+		chip.appendChild(el("span", { text: getAuthorOptionLabel(authorSelect, authorId) || authorId }));
+		const remove = el("button", { type: "button", text: "×", "aria-label": "作者選択を解除" });
+		remove.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const selected = new Set(getSelectedAuthorIds(authorSelect));
+			selected.delete(authorId);
+			setSelectedAuthorIds(authorSelect, Array.from(selected));
+			dispatchAuthorSelectionChange(authorSelect);
+		});
+		chip.appendChild(remove);
+		root.appendChild(chip);
+	});
+}
+
+function renderAuthorCandidateButtons(root, selectEl, candidates, { emptyText = "" } = {}) {
+	const authorSelect = selectEl;
+	if (!root || !authorSelect) return;
+	root.innerHTML = "";
+	const list = Array.isArray(candidates) ? candidates : [];
+	if (list.length === 0) {
+		if (emptyText) {
+			root.hidden = false;
+			root.appendChild(el("div", { class: "subnote", text: emptyText }));
+		} else {
+			root.hidden = true;
+		}
+		return;
+	}
+	root.hidden = false;
+	root.appendChild(el("div", { class: "subnote", text: "候補ボタン（作者名 + セッションノート）" }));
+
+	const selectedIds = new Set(getSelectedAuthorIds(authorSelect));
+	list.forEach((candidate) => {
+		const candidateId = trimText(candidate?.id);
+		const label = trimText(candidate?.label);
+		if (!candidateId || !label) return;
+		const button = el("button", {
+			type: "button",
+			class: `candidate-note candidate-note--button${selectedIds.has(candidateId) ? " is-selected" : ""}`,
+		});
+		button.appendChild(el("div", { class: "candidate-note__name", text: label }));
+		button.appendChild(el("div", { class: "candidate-note__text", text: formatCandidateNoteText(candidate?.sessionNote) }));
+		button.addEventListener("click", () => {
+			const selected = new Set(getSelectedAuthorIds(authorSelect));
+			if (selected.has(candidateId)) {
+				selected.delete(candidateId);
+			} else {
+				ensureAuthorOption(authorSelect, buildStudentRecord({ id: candidateId, display_name: label }));
+				selected.add(candidateId);
+			}
+			setSelectedAuthorIds(authorSelect, Array.from(selected));
+			dispatchAuthorSelectionChange(authorSelect);
+		});
+		root.appendChild(button);
+	});
+
+}
+
+function syncAuthorPickerUi({
+	selectEl,
+	selectedRoot,
+	candidatesRoot,
+	candidates,
+	emptyCandidatesText = "当日参加者候補なし（名簿検索をご利用ください）",
+} = {}) {
+	renderAuthorSelectedChips(selectedRoot, selectEl);
+	renderAuthorCandidateButtons(candidatesRoot, selectEl, candidates, { emptyText: emptyCandidatesText });
+}
+
+function syncUploadAuthorUi() {
+	syncAuthorPickerUi({
+		selectEl: qs("#upload-author"),
+		selectedRoot: qs("#upload-author-selected"),
+		candidatesRoot: qs("#upload-author-candidate-notes"),
+		candidates: state.upload.authorCandidates,
+	});
+}
+
+function bindAuthorSearchInput({ inputEl, resultsRoot, selectEl, onPicked = null } = {}) {
+	if (!inputEl || !resultsRoot || !selectEl) return;
+
+	const render = (items) => {
+		resultsRoot.innerHTML = "";
+		items.slice(0, 12).forEach((student) => {
+			const item = el("div", { class: "suggest-item" }, [
+				el("span", { text: student.choiceLabel || student.displayName }),
+				el("span", { class: "suggest-item__hint", text: student.studentId ? `(${student.studentId})` : "" }),
+			]);
+			item.addEventListener("click", () => {
+				if (!student.notionId) return;
+				ensureAuthorOption(selectEl, student);
+				const selected = new Set(getSelectedAuthorIds(selectEl));
+				selected.add(student.notionId);
+				setSelectedAuthorIds(selectEl, Array.from(selected));
+				dispatchAuthorSelectionChange(selectEl);
+				onPicked?.();
+				resultsRoot.innerHTML = "";
+				inputEl.value = "";
+			});
+			resultsRoot.appendChild(item);
+		});
+	};
+
+	const run = debounce(() => {
+		(async () => {
+			const raw = inputEl.value.trim();
+			const q = normalizeSearch(raw);
+			if (!q) return render([]);
+
+			const hits = [];
+			const seen = new Set();
+			for (const student of [...state.studentsByNotionId.values(), ...state.studentsByStudentId.values()]) {
+				const keyId = student.notionId || student.studentId;
+				if (!keyId || seen.has(keyId)) continue;
+				seen.add(keyId);
+				const key = normalizeSearch([student.displayName, student.choiceLabel, student.studentId].filter(Boolean).join(" "));
+				if (key.includes(q)) hits.push(student);
+			}
+
+			if (hits.length < 8 && raw.length >= 2) {
+				try {
+					const remote = await apiFetch(`/admin/notion/search-students?q=${encodeURIComponent(raw)}`);
+					for (const r of remote.results || []) {
+						const record = buildStudentRecord({
+							id: trimText(r.id),
+							display_name: trimText(r.name),
+							nickname: trimText(r.nickname),
+							real_name: trimText(r.real_name),
+						});
+						const notionId = record.notionId;
+						if (!notionId || !record.displayName || seen.has(notionId)) continue;
+						seen.add(notionId);
+						hits.push(record);
+					}
+				} catch (err) {
+					console.error("Author remote search failed:", err);
+				}
+			}
+
+			render(hits);
+		})().catch((err) => {
+			console.error("Author search failed:", err);
+		});
+	}, 200);
+
+	inputEl.addEventListener("input", run);
+	inputEl.addEventListener("blur", () => {
+		window.setTimeout(() => {
+			resultsRoot.innerHTML = "";
+		}, 120);
 	});
 }
 
@@ -1591,7 +1752,7 @@ function renderUploadPreviews() {
 		root.appendChild(item);
 	});
 
-	updateUploadSelectionStatusText();
+updateUploadSelectionStatusText();
 }
 
 function formatDateYmdInJst(date) {
@@ -1896,7 +2057,6 @@ function resetUploadFormForNextEntry(statusText = "登録完了。次の作品�
 	if (authorSearch) authorSearch.value = "";
 	if (authorSearchResults) authorSearchResults.innerHTML = "";
 	if (filesInput) filesInput.value = "";
-
 	updateUploadGroupAndAuthorCandidates({ preferredGroupValue: "", preferredAuthorIds: [] });
 
 	if (status) status.textContent = statusText;
@@ -2107,72 +2267,11 @@ function initUpload() {
 }
 
 function initStudentSearch() {
-	const input = qs("#upload-author-search");
-	const resultsRoot = qs("#upload-author-search-results");
-	const authorSelect = qs("#upload-author");
-
-	const render = (items) => {
-		resultsRoot.innerHTML = "";
-		items.slice(0, 12).forEach((s) => {
-			const item = el("div", { class: "suggest-item" }, [
-				el("span", { text: s.choiceLabel || s.displayName }),
-				el("span", { class: "suggest-item__hint", text: s.studentId ? `(${s.studentId})` : "" }),
-			]);
-			item.addEventListener("click", () => {
-				if (!s.notionId) return;
-				ensureAuthorOption(authorSelect, s);
-				const selected = new Set(getSelectedAuthorIds(authorSelect));
-				selected.add(s.notionId);
-				setSelectedAuthorIds(authorSelect, Array.from(selected));
-				authorSelect.dispatchEvent(new Event("change", { bubbles: true }));
-				resultsRoot.innerHTML = "";
-				input.value = "";
-			});
-			resultsRoot.appendChild(item);
-		});
-	};
-
-	const run = debounce(() => {
-		(async () => {
-			const raw = input.value.trim();
-			const q = normalizeSearch(raw);
-			if (!q) return render([]);
-
-			const hits = [];
-			const seen = new Set();
-			for (const s of [...state.studentsByNotionId.values(), ...state.studentsByStudentId.values()]) {
-				const keyId = s.notionId || s.studentId;
-				if (!keyId || seen.has(keyId)) continue;
-				seen.add(keyId);
-				const key = normalizeSearch([s.displayName, s.choiceLabel, s.studentId].filter(Boolean).join(" "));
-				if (key.includes(q)) hits.push(s);
-			}
-
-			if (hits.length < 8 && raw.length >= 2) {
-				try {
-					const remote = await apiFetch(`/admin/notion/search-students?q=${encodeURIComponent(raw)}`);
-					for (const r of remote.results || []) {
-						const record = buildStudentRecord({
-							id: trimText(r.id),
-							display_name: trimText(r.name),
-							nickname: trimText(r.nickname),
-							real_name: trimText(r.real_name),
-						});
-						const notionId = record.notionId;
-						if (!notionId || !record.displayName || seen.has(notionId)) continue;
-						seen.add(notionId);
-						hits.push(record);
-					}
-				} catch {
-					// noop
-				}
-			}
-
-			render(hits);
-		})().catch(() => {});
-	}, 200);
-
-	input.addEventListener("input", run);
+	bindAuthorSearchInput({
+		inputEl: qs("#upload-author-search"),
+		resultsRoot: qs("#upload-author-search-results"),
+		selectEl: qs("#upload-author"),
+	});
 }
 
 function initTagInput(prefix) {
@@ -2711,38 +2810,42 @@ function renderWorkModal(work, index) {
 	const readyCb = el("input", { type: "checkbox" });
 	readyCb.checked = Boolean(work.ready);
 
-	const authorSelect = el("select", { class: "input" });
+	const authorSelect = el("select", { class: "input author-select-native", "aria-hidden": "true" });
 	authorSelect.multiple = true;
+	authorSelect.hidden = true;
 	for (const s of state.studentsByNotionId.values()) {
 		authorSelect.appendChild(el("option", { value: s.notionId, text: s.choiceLabel || s.displayName }));
 	}
 	setSelectedAuthorIds(authorSelect, Array.isArray(work.authorIds) ? work.authorIds : []);
 
 	const authorCandidates = getAuthorCandidatesForWork(work);
-	const authorCandidateChips = el("div", { class: "chips" });
+	const authorSelected = el("div", { class: "chips", hidden: true });
 	const authorCandidateNotes = el("div", { class: "candidate-notes" });
-	if (authorCandidates.length > 0) {
-		authorCandidates.forEach((c) => {
-			const chip = el("span", { class: "chip" });
-			chip.appendChild(el("span", { text: c.label }));
-			chip.addEventListener("click", () => {
-				const selected = new Set(getSelectedAuthorIds(authorSelect));
-				if (selected.has(c.id)) {
-					selected.delete(c.id);
-					showToast(`作者候補を解除: ${c.label}`);
-				} else {
-					ensureAuthorOption(authorSelect, buildStudentRecord({ id: c.id, display_name: c.label }));
-					selected.add(c.id);
-					showToast(`作者候補を追加: ${c.label}`);
-				}
-				setSelectedAuthorIds(authorSelect, Array.from(selected));
-			});
-			authorCandidateChips.appendChild(chip);
+	const authorSearchInput = el("input", {
+		class: "input",
+		type: "text",
+		placeholder: "例：けい",
+		autocomplete: "off",
+		"aria-label": "作者を名簿検索",
+	});
+	const authorSearchResults = el("div", { class: "suggest" });
+
+	const syncModalAuthorUi = () => {
+		syncAuthorPickerUi({
+			selectEl: authorSelect,
+			selectedRoot: authorSelected,
+			candidatesRoot: authorCandidateNotes,
+			candidates: authorCandidates,
 		});
-	} else {
-		authorCandidateChips.appendChild(el("div", { class: "subnote", text: "当日参加者候補なし（名簿から選択してください）" }));
-	}
-	renderAuthorCandidateNotes(authorCandidateNotes, authorCandidates);
+	};
+
+	authorSelect.addEventListener("change", syncModalAuthorUi);
+	bindAuthorSearchInput({
+		inputEl: authorSearchInput,
+		resultsRoot: authorSearchResults,
+		selectEl: authorSelect,
+	});
+	syncModalAuthorUi();
 
 	const tagQuery = el("input", { class: "input", type: "text", placeholder: "タグ検索", autocomplete: "off" });
 	const tagSuggest = el("div", { class: "suggest" });
@@ -3012,9 +3115,23 @@ function renderWorkModal(work, index) {
 		}
 	});
 
+	const modalAuthorLabelId = `curation-author-label-${index}`;
+
 	const info = el("div", {}, [
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作品名" }), titleControls]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "作者" }), authorSelect, authorCandidateChips, authorCandidateNotes]),
+		el("div", { class: "form-row" }, [
+			el("div", { id: modalAuthorLabelId, class: "label", text: "作者" }),
+			authorSelect,
+			el("div", { class: "author-picker", role: "group", "aria-labelledby": modalAuthorLabelId }, [
+				authorSelected,
+				authorCandidateNotes,
+				el("div", { class: "author-picker__search" }, [
+					el("div", { class: "subnote", text: "名簿検索" }),
+					authorSearchInput,
+					authorSearchResults,
+				]),
+			]),
+		]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot, tagRelationEditor]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [

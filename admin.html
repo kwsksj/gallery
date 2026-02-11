@@ -138,18 +138,20 @@
 
 						<div class="form-grid">
 							<div class="form-row">
-								<label class="label" for="upload-author">作者</label>
-								<select id="upload-author" class="input" multiple size="6"></select>
+								<div id="upload-author-label" class="label">作者</div>
+								<select id="upload-author" class="input author-select-native" multiple size="6" hidden aria-hidden="true"></select>
 								<div class="subnote">
-									複数選択可（同日参加者候補ボタン + 名簿検索）。表示は「ニックネーム｜本名」。
+									候補ボタン + 名簿検索で複数選択できます。表示は「ニックネーム｜本名」です。
 								</div>
-								<div id="upload-author-selected" class="chips" aria-label="選択中の作者" hidden></div>
-								<div id="upload-author-candidate-notes" class="candidate-notes" hidden></div>
-							</div>
-							<div class="form-row">
-								<label class="label" for="upload-author-search">名簿検索</label>
-								<input id="upload-author-search" class="input" type="text" placeholder="例：けい" />
-								<div id="upload-author-search-results" class="suggest"></div>
+								<div class="author-picker" role="group" aria-labelledby="upload-author-label">
+									<div id="upload-author-selected" class="chips" aria-label="選択中の作者" hidden></div>
+									<div id="upload-author-candidate-notes" class="candidate-notes" hidden></div>
+									<div class="author-picker__search">
+										<div class="subnote">名簿検索</div>
+										<input id="upload-author-search" class="input" type="text" placeholder="例：けい" aria-label="作者を名簿検索" />
+										<div id="upload-author-search-results" class="suggest"></div>
+									</div>
+								</div>
 							</div>
 						</div>
 

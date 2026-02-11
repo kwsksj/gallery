@@ -2355,6 +2355,11 @@
 				--line-light: #e8ddd6;
 				--accent: #c86f34;
 				--accent-2: #5a8c36;
+				--toggle-track: #e8ddd6;
+				--toggle-text: #4e342e;
+				--toggle-pill-height: 42px;
+				--toggle-button-height: 34px;
+				--group-title-chip-bg: rgba(48, 34, 27, 0.56);
 				--chip-bg: #e4cdba;
 				--chip-text: #4e342e;
 				--shadow: 4px 4px 4px rgba(90, 60, 40, 0.08);
@@ -2397,7 +2402,7 @@
 
 			.app {
 				min-height: 100vh;
-				padding: 0px 0px px;
+				padding: 0;
 				width: 100%;
 			}
 
@@ -2405,123 +2410,242 @@
 				position: sticky;
 				top: 0;
 				z-index: 5;
-				background: var(--paper);
-				border: none;
-				padding: 6px 0 6px;
+				background: rgba(250, 248, 243, 0.92);
+				backdrop-filter: blur(8px);
+				-webkit-backdrop-filter: blur(8px);
+				border-bottom: 1px solid rgba(140, 108, 88, 0.14);
+				padding: 7px 0 7px;
 				margin-bottom: 6px;
-				box-shadow: var(--shadow);
+				box-shadow:
+					0 4px 12px rgba(86, 56, 38, 0.1),
+					inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+				transition:
+					transform 0.22s ease,
+					opacity 0.2s ease,
+					box-shadow 0.2s ease;
+				will-change: transform;
+			}
+
+			.header.is-hidden {
+				transform: translateY(calc(-100% - 8px));
+				opacity: 0.02;
+				pointer-events: none;
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.header {
+					transition: none;
+				}
 			}
 
 			.header-inner {
-				max-width: 1080px;
+				max-width: 1240px;
 				margin: 0 auto;
+				padding: 0 8px;
+				display: grid;
+				gap: 6px;
 			}
 
 			.title-row {
 				display: flex;
-				align-items: baseline;
+				align-items: center;
 				justify-content: flex-start;
-				gap: 6px;
-				padding: 0 6px 6px;
+				gap: 10px;
+				padding: 0;
 			}
 
 			.title {
-				font-size: 16px;
-				letter-spacing: 0.04em;
+				font-size: clamp(16px, 4.2vw, 22px);
+				letter-spacing: 0.03em;
 				margin: 0;
 				font-weight: 800;
-				padding: 0 0 0 6px;
+				padding: 0;
+				line-height: 1.15;
 			}
 
 			.count {
 				color: var(--muted);
-				font-size: 10px;
+				font-size: clamp(10px, 2.5vw, 12px);
 				margin-left: auto;
 				text-align: right;
-				min-width: 60px;
-				padding: 0 6px 0 0;
+				min-width: 0;
+				padding: 0;
+				font-weight: 700;
+				letter-spacing: 0.04em;
+				white-space: nowrap;
+			}
+
+			.controls-row {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: end;
+				gap: 6px;
 			}
 
 			.viewer-actions {
 				display: flex;
-				justify-content: center;
-				padding: 0 12px 4px;
+				justify-content: flex-start;
+				padding: 0;
+				flex: 1 1 320px;
+				min-width: 220px;
 			}
 
-			.viewer-toggle {
+			.viewer-toggle,
+			.pill-toggle {
 				display: inline-flex;
 				align-items: center;
 				gap: 4px;
-				padding: 2px;
-				border: 2px solid var(--line);
+				padding: 4px;
+				min-height: var(--toggle-pill-height);
 				border-radius: 999px;
-				background: var(--paper);
+				background: var(--toggle-track);
+				width: 100%;
+				flex-wrap: wrap;
 			}
 
-			.viewer-toggle-button {
+			.viewer-toggle .viewer-toggle-button,
+			.pill-toggle .pill-toggle-button {
 				border: 0;
 				border-radius: 999px;
 				background: transparent;
-				color: var(--subtle);
-				font-size: 12px;
+				color: var(--toggle-text);
+				font-size: 14px;
 				font-weight: 800;
 				line-height: 1.2;
-				padding: 5px 10px;
+				padding: 7px 10px;
 				cursor: pointer;
 				white-space: nowrap;
+				min-height: var(--toggle-button-height);
+				transition:
+					background-color 0.18s ease,
+					color 0.18s ease-in-out;
 			}
 
-			.viewer-toggle-button.is-active {
-				background: var(--chip-bg);
-				color: var(--chip-text);
+			.viewer-toggle .viewer-toggle-button {
+				flex: 1 1 auto;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 
-			.viewer-toggle-button:disabled {
+			.pill-toggle .pill-toggle-button {
+				flex: 1 1 auto;
+			}
+
+			.viewer-toggle .viewer-toggle-button.is-active,
+			.pill-toggle .pill-toggle-button.is-active {
+				background: var(--accent);
+				color: #fff;
+			}
+
+			.viewer-toggle .viewer-toggle-button:disabled,
+			.pill-toggle .pill-toggle-button:disabled {
 				opacity: 0.45;
 				cursor: default;
+			}
+
+			.viewer-toggle .viewer-toggle-button:active,
+			.pill-toggle .pill-toggle-button:active {
+				transform: none;
+			}
+
+			.filter-bar {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: end;
+				gap: 6px;
+				flex: 2 1 560px;
+				min-width: 220px;
 			}
 
 			.filters {
 				display: grid;
 				gap: 6px;
-				padding: 0 6px;
+				padding: 0;
+				flex: 1 1 260px;
+				min-width: 0;
 			}
 
-			.filter-row {
+			.filter-type {
 				display: grid;
+				gap: 4px;
+			}
+
+			.group-sort {
+				display: flex;
+				align-items: stretch;
 				gap: 6px;
-				grid-template-columns: repeat(2, minmax(0, 1fr));
+				padding: 0;
+				flex: 1 1 320px;
+				min-width: 0;
+			}
+
+			.group-sort-toggle {
+				flex: 1 1 220px;
+				min-width: 0;
+			}
+
+			.group-selected-toggle {
+				flex: 1 1 220px;
+				min-width: 0;
+			}
+
+			.group-selected-toggle .group-selected-value,
+			.group-selected-toggle .group-back-button {
+				flex: 1 1 0;
+				min-width: 0;
+			}
+
+			.group-selected-toggle .group-selected-value {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				text-align: center;
+				padding-top: 8px;
+				padding-bottom: 6px;
+				cursor: default;
+			}
+
+			.group-selected-toggle .group-selected-value.is-active {
+				background: var(--group-title-chip-bg);
+				color: #fff;
 			}
 
 			@media (min-width: 900px) {
-				.filters {
-					grid-template-columns: repeat(3, minmax(0, 1fr));
+				.header-inner {
+					grid-template-columns: 1fr;
+					align-items: stretch;
 				}
 
-				.filter-row {
-					display: contents;
+				.title-row {
+					grid-column: auto;
+				}
+
+				.viewer-actions {
+					flex: 1 1 360px;
+					align-self: stretch;
+				}
+
+				.filters {
+					flex: 1 1 300px;
+				}
+
+				.group-sort {
+					flex: 1 1 320px;
 				}
 			}
 
-			select,
 			button {
 				font: inherit;
-			}
-
-			select {
-				width: 100%;
-				border-radius: 8px;
-				border: 2px solid var(--line);
-				font-size: 14px;
-				padding: 4px 14px;
-				background: var(--paper);
-				color: var(--ink);
-				font-variant-numeric: tabular-nums;
 			}
 
 			.filter-select {
 				position: relative;
 				width: 100%;
+			}
+
+			.filter-select.is-disabled .filter-trigger {
+				opacity: 0.6;
+				cursor: default;
 			}
 
 			.filter-trigger {
@@ -2668,7 +2792,7 @@
 			.grid {
 				display: grid;
 				gap: var(--grid-gap);
-				grid-template-columns: repeat(2, minmax(0, 1fr));
+				grid-template-columns: repeat(3, minmax(0, 1fr));
 				padding: 0 6px 20px;
 			}
 
@@ -2682,13 +2806,7 @@
 				padding: 56px 12px 40px;
 			}
 
-			@media (min-width: 640px) {
-				.grid {
-					grid-template-columns: repeat(3, minmax(0, 1fr));
-				}
-			}
-
-			@media (min-width: 980px) {
+			@media (min-width: 900px) {
 				.grid {
 					grid-template-columns: repeat(4, minmax(0, 1fr));
 				}
@@ -2697,6 +2815,12 @@
 			@media (min-width: 1240px) {
 				.grid {
 					grid-template-columns: repeat(5, minmax(0, 1fr));
+				}
+			}
+
+			@media (min-width: 1560px) {
+				.grid {
+					grid-template-columns: repeat(6, minmax(0, 1fr));
 				}
 			}
 
@@ -2709,11 +2833,6 @@
 				cursor: pointer;
 				display: flex;
 				flex-direction: column;
-				transition: transform 0.2s ease;
-			}
-
-			.card:hover {
-				transform: translateY(-4px);
 			}
 
 			.thumb {
@@ -2732,16 +2851,59 @@
 				display: block;
 			}
 
+			.group-count-badge {
+				position: absolute;
+				right: 6px;
+				bottom: 6px;
+				padding: 3px 7px 4px;
+				border-radius: 999px;
+				background: #785a4e82;
+				color: #fff;
+				font-size: 13px;
+				font-weight: 400;
+				line-height: 1;
+				font-variant-numeric: tabular-nums;
+				backdrop-filter: blur(2px);
+			}
+
+			.group-title-badge {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				transform: translate(-50%, -50%);
+				width: calc(100% - 20px);
+				max-width: calc(100% - 20px);
+				padding: 10px 12px;
+				border-radius: 999px;
+				background: var(--group-title-chip-bg);
+				color: #fff;
+				font-size: clamp(14px, 2.4vw, 24px);
+				font-weight: 700;
+				line-height: 1.3;
+				white-space: normal;
+				word-break: keep-all;
+				overflow-wrap: anywhere;
+				text-align: center;
+				backdrop-filter: blur(2px);
+				pointer-events: none;
+			}
+
+			.image-count-badge {
+				min-width: 18px;
+				text-align: center;
+				justify-content: center;
+			}
+
 			.card-body {
-				padding: 10px 12px 12px;
+				padding: 7px 8px 8px;
 				display: grid;
-				gap: 6px;
+				gap: 4px;
 			}
 
 			.card-title {
-				font-size: 14px;
+				font-size: clamp(11px, 1.9vw, 14px);
 				margin: 0;
-				line-height: 1.4;
+				line-height: 1.3;
 			}
 
 			.card-title-row {
@@ -2752,7 +2914,7 @@
 			}
 
 			.card-meta {
-				font-size: 11px;
+				font-size: 10px;
 				color: var(--muted);
 			}
 
@@ -2766,8 +2928,8 @@
 				position: relative;
 				display: grid;
 				place-items: center;
-				width: 40px;
-				height: 40px;
+				width: 32px;
+				height: 32px;
 				background: #fff;
 				color: var(--accent);
 				border: none;
@@ -2780,8 +2942,8 @@
 			}
 
 			.star-btn svg {
-				width: 20px;
-				height: 20px;
+				width: 16px;
+				height: 16px;
 				stroke: var(--accent);
 				stroke-width: 1.7;
 				stroke-linejoin: round;
@@ -2792,13 +2954,13 @@
 			.star-btn .star-count {
 				position: absolute;
 				left: 50%;
-				bottom: 2px;
+				bottom: 1px;
 				min-width: 12px;
 				padding: 0 2px;
 				border-radius: 999px;
 				background: transparent;
 				color: var(--muted);
-				font-size: 9px;
+				font-size: 8px;
 				font-weight: 700;
 				line-height: 1;
 				text-align: center;
@@ -2853,10 +3015,31 @@
 			}
 
 			.star-count {
-				font-size: 10px;
+				font-size: 9px;
 				color: var(--muted);
 				text-align: center;
 				box-shadow: none;
+			}
+
+			@media (min-width: 900px) {
+				.card-body {
+					padding: 8px 10px 10px;
+					gap: 5px;
+				}
+
+				.star-btn {
+					width: 36px;
+					height: 36px;
+				}
+
+				.star-btn svg {
+					width: 18px;
+					height: 18px;
+				}
+
+				.star-btn .star-count {
+					font-size: 9px;
+				}
 			}
 
 			.star-hidden .star-count {
@@ -3227,30 +3410,82 @@
 			<div class="header">
 				<div class="header-inner">
 					<div class="title-row">
-						<h1 class="title">生徒作品ギャラリー</h1>
+						<h1 class="title" id="gallery-title">生徒作品ギャラリー</h1>
 						<div class="count" id="count"></div>
 					</div>
-					<div class="viewer-actions" id="viewer-actions" hidden>
-						<div class="viewer-toggle" role="group" aria-label="表示切り替え">
-							<button
-								class="viewer-toggle-button"
-								id="viewer-self-button"
-								type="button"
-							></button>
-							<button
-								class="viewer-toggle-button"
-								id="viewer-all-button"
-								type="button"
-							>
-								みんなの さくひん
-							</button>
+					<div class="controls-row">
+						<div class="viewer-actions" id="viewer-actions" hidden>
+							<div class="viewer-toggle" role="group" aria-label="表示切り替え">
+								<button
+									class="viewer-toggle-button"
+									id="viewer-self-button"
+									type="button"
+								></button>
+								<button
+									class="viewer-toggle-button"
+									id="viewer-all-button"
+									type="button"
+								>
+									みんな
+								</button>
+							</div>
 						</div>
-					</div>
-					<div class="filters" id="filters">
-						<div class="filter-select" data-filter="tag"></div>
-						<div class="filter-row">
-							<div class="filter-select" data-filter="author"></div>
-							<div class="filter-select" data-filter="studio"></div>
+						<div class="filter-bar">
+							<div class="filters" id="filters">
+								<div class="filter-type">
+									<div class="pill-toggle filter-type-toggle" id="filter-type-toggle" role="group" aria-label="さくいん">
+										<button class="pill-toggle-button" data-filter-type="" type="button" aria-pressed="true">
+											全作品
+										</button>
+										<button class="pill-toggle-button" data-filter-type="tag" type="button" aria-pressed="false">
+											キーワード
+										</button>
+										<button class="pill-toggle-button" data-filter-type="author" type="button" aria-pressed="false">
+											作者
+										</button>
+										<button class="pill-toggle-button" data-filter-type="studio" type="button" aria-pressed="false">
+											教室
+										</button>
+									</div>
+								</div>
+							</div>
+							<div class="group-sort" id="group-sort" hidden>
+								<div
+									class="pill-toggle group-sort-toggle"
+									id="group-sort-toggle"
+									role="group"
+									aria-label="カードの並び順"
+								>
+									<button
+										class="pill-toggle-button"
+										data-group-sort="count"
+										type="button"
+										aria-pressed="true"
+									>
+										作品数順
+									</button>
+									<button
+										class="pill-toggle-button"
+										data-group-sort="alpha"
+										type="button"
+										aria-pressed="false"
+									>
+										アルファベット順
+									</button>
+								</div>
+								<div
+									class="pill-toggle group-selected-toggle"
+									id="group-selected-toggle"
+									role="group"
+									aria-label="選択中グループ"
+									hidden
+								>
+									<div class="pill-toggle-button group-selected-value is-active" id="group-selected-value"></div>
+									<button class="pill-toggle-button group-back-button" id="group-back-button" type="button">
+										一覧にもどる
+									</button>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -3266,7 +3501,7 @@
 		<div class="modal" id="modal" aria-hidden="true">
 			<div class="modal-shell">
 				<button class="modal-back" id="modal-back" type="button">
-					＜ 戻る
+					＜ もどる
 				</button>
 				<div class="modal-panel" role="dialog" aria-modal="true">
 					<div id="modal-content"></div>
@@ -3278,18 +3513,27 @@
 			const state = {
 				works: [],
 				filtered: [],
+				groupedVisibleCount: 0,
+				groupSort: "count",
 				starState: new Map(),
 				starsAvailable: true,
 				filter: { type: "", value: "" },
 				filterOptions: null,
 				starApiBase: "",
 				modalScrollY: 0,
+				bodyScrollLocked: false,
+				gridCenteringRafId: 0,
+				gridCenteringLastColumns: 0,
+				headerScrollRafId: 0,
+				headerLastScrollY: 0,
+				headerHidden: false,
 				studentsIndex: null,
 				studentsByStudentId: new Map(),
 				studentsByNotionId: new Map(),
 				studentsByDisplayName: new Map(),
 				studentsByNickname: new Map(),
-				animalAliasByAuthorKey: new Map(),
+				authorAliasByAuthorKey: new Map(),
+				authorAliasUsageCountByName: new Map(),
 				viewer: {
 					isLoggedIn: false,
 					studentId: "",
@@ -3301,17 +3545,18 @@
 			};
 
 			const els = {
+				header: document.querySelector(".header"),
 				loading: document.getElementById("loading"),
 				error: document.getElementById("error"),
 				grid: document.getElementById("grid"),
-				filterTag: document.querySelector('.filter-select[data-filter="tag"]'),
-				filterAuthor: document.querySelector(
-					'.filter-select[data-filter="author"]',
-				),
-				filterStudio: document.querySelector(
-					'.filter-select[data-filter="studio"]',
-				),
+				title: document.getElementById("gallery-title"),
+				filterTypeToggle: document.getElementById("filter-type-toggle"),
 				filters: document.getElementById("filters"),
+				groupSort: document.getElementById("group-sort"),
+				groupSortToggle: document.getElementById("group-sort-toggle"),
+				groupSelectedToggle: document.getElementById("group-selected-toggle"),
+				groupSelectedValue: document.getElementById("group-selected-value"),
+				groupBackButton: document.getElementById("group-back-button"),
 				count: document.getElementById("count"),
 				viewerActions: document.getElementById("viewer-actions"),
 				viewerSelfButton: document.getElementById("viewer-self-button"),
@@ -3321,6 +3566,13 @@
 				modalBack: document.getElementById("modal-back"),
 				modalContent: document.getElementById("modal-content"),
 			};
+
+			els.filterTypeButtons = Array.from(
+				els.filterTypeToggle?.querySelectorAll("button[data-filter-type]") || [],
+			);
+			els.groupSortButtons = Array.from(
+				els.groupSortToggle?.querySelectorAll("button[data-group-sort]") || [],
+			);
 
 			const PLACEHOLDER =
 				"data:image/svg+xml;utf8," +
@@ -3333,7 +3585,7 @@
 				<path d="M12 2.7l2.7 5.7 6.3.9-4.6 4.4 1.1 6.2L12 16.8 6.5 19.9l1.1-6.2L3 9.3l6.3-.9L12 2.7z"></path>
 			</svg>`;
 
-			const ANIMAL_ALIASES = [
+			const AUTHOR_ALIAS_CANDIDATES = [
 				"きつね",
 				"りす",
 				"うさぎ",
@@ -3354,6 +3606,109 @@
 				"あらいぐま",
 				"はりねずみ",
 				"たぬき",
+				"かものはし",
+				"おかぴ",
+				"まぬるねこ",
+				"つちぶた",
+				"びんとろんぐ",
+				"きんくじゅー",
+				"めんふくろう",
+				"しまふくろう",
+				"こつめかわうそ",
+				"ゆきひょう",
+				"わらびー",
+				"くおっか",
+				"ありくい",
+				"しろながすくじら",
+				"ふぇねっく",
+				"まれーばく",
+				"せんざんこう",
+				"じゃこううし",
+				"あるぱか",
+				"びくーにゃ",
+				"ひのき",
+				"けやき",
+				"くすのき",
+				"ほおのき",
+				"いちい",
+				"かつら",
+				"とちのき",
+				"かえで",
+				"やまざくら",
+				"えんじゅ",
+				"みずき",
+				"せんだん",
+				"たぶのき",
+				"しな",
+				"きはだ",
+				"あすなろ",
+				"ぶな",
+				"せんのき",
+				"えのき",
+				"にれ",
+				"すぎ",
+				"ひば",
+				"さわら",
+				"ひめこまつ",
+				"あかまつ",
+				"くろまつ",
+				"えぞまつ",
+				"とどまつ",
+				"もみ",
+				"しらかば",
+				"だけかんば",
+				"きり",
+				"つげ",
+				"くるみ",
+				"なら",
+				"かし",
+				"とねりこ",
+				"しおじ",
+				"やなぎ",
+				"ほんざくら",
+				"うぉーるなっと",
+				"めーぷる",
+				"ちーく",
+				"まほがに",
+				"ろーずうっど",
+				"ぶびんが",
+				"こくたん",
+				"ぜぶらうっど",
+				"ぱーぷるはーと",
+				"ぱどっく",
+				"おりーぶ",
+				"びーち",
+				"ばすうっど",
+				"りんでん",
+				"つばき",
+				"すみれ",
+				"ききょう",
+				"りんどう",
+				"あさがお",
+				"なでしこ",
+				"あじさい",
+				"しゃくやく",
+				"こすもす",
+				"きんもくせい",
+				"ふじ",
+				"ぼたん",
+				"すいせん",
+				"やまぶき",
+				"おみなえし",
+				"はまなす",
+				"すずらん",
+				"まつりか",
+				"くちなし",
+				"ひがんばな",
+				"ろうばい",
+				"あねもね",
+				"ねもふぃら",
+				"かすみそう",
+				"でいじー",
+				"わすれなぐさ",
+				"えーでるわいす",
+				"にりんそう",
+				"ふくじゅそう",
 			];
 
 			function trimText(value) {
@@ -3394,20 +3749,6 @@
 				map.set(key, list);
 			}
 
-			function parseBoolLike(value) {
-				const normalized = trimText(value).toLowerCase();
-				return ["1", "true", "yes", "on"].includes(normalized);
-			}
-
-			function hashString(value) {
-				let hash = 2166136261;
-				for (const ch of String(value || "")) {
-					hash ^= ch.charCodeAt(0);
-					hash = Math.imul(hash, 16777619);
-				}
-				return hash >>> 0;
-			}
-
 			function getStarApiBase() {
 				const fromData = document.getElementById("app").dataset.starApi;
 				if (fromData) return fromData.trim();
@@ -3445,11 +3786,10 @@
 				};
 
 				const studentId =
-					readFromParams(["student_id", "studentId", "sid", "user_id", "userId"]) ||
+					readFromParams(["student_id", "studentId"]) ||
 					trimText(reservationUser.student_id || reservationUser.studentId) ||
 					trimText(app?.dataset.studentId) ||
-					trimText(window.RESERVATION_STUDENT_ID) ||
-					trimText(window.STUDENT_ID);
+					trimText(window.RESERVATION_STUDENT_ID);
 
 				const displayName =
 					readFromParams(["display_name", "displayName", "viewer_name"]) ||
@@ -3465,24 +3805,8 @@
 					trimText(app?.dataset.nickname) ||
 					trimText(window.RESERVATION_NICKNAME);
 
-				const loggedInHint =
-					parseBoolLike(
-						readFromParams([
-							"logged_in",
-							"loggedIn",
-							"is_logged_in",
-							"isLoggedIn",
-						]),
-					) ||
-					parseBoolLike(
-						reservationUser.logged_in ||
-							reservationUser.loggedIn ||
-							app?.dataset.loggedIn ||
-							window.RESERVATION_LOGGED_IN,
-					);
-
 				return {
-					isLoggedIn: Boolean(studentId || loggedInHint),
+					isLoggedIn: false,
 					studentId: normalizeAuthorId(studentId),
 					notionId: "",
 					displayName: trimText(displayName),
@@ -3617,27 +3941,27 @@
 			}
 
 			function resolveViewerContextFromIndex() {
-				if (!state.viewer.isLoggedIn) return;
+				const studentId = normalizeAuthorId(state.viewer.studentId);
+				if (!studentId) {
+					state.viewer.isLoggedIn = false;
+					return;
+				}
 
-				let record = null;
-				if (state.viewer.studentId) {
-					record = findStudentRecordByAnyId(state.viewer.studentId);
+				const record = state.studentsByStudentId.get(studentId) || null;
+				if (!record) {
+					state.viewer.isLoggedIn = false;
+					return;
 				}
-				if (!record && state.viewer.displayName) {
-					record = findUniqueStudentByLabel(state.viewer.displayName);
-				}
-				if (!record && state.viewer.nickname) {
-					record = findUniqueStudentByLabel(state.viewer.nickname);
-				}
-				if (!record) return;
 
-				if (!state.viewer.notionId && record.notionId) {
+				state.viewer.isLoggedIn = true;
+				state.viewer.studentId = record.studentId || studentId;
+				if (record.notionId) {
 					state.viewer.notionId = record.notionId;
 				}
-				if (!state.viewer.displayName && record.displayName) {
+				if (record.displayName) {
 					state.viewer.displayName = record.displayName;
 				}
-				if (!state.viewer.nickname && record.nickname) {
+				if (record.nickname) {
 					state.viewer.nickname = record.nickname;
 				}
 			}
@@ -3760,13 +4084,28 @@
 					if (record) break;
 				}
 				if (!record && label) {
-					record = findUniqueStudentByLabel(label);
+					const recordByIdLabel = findStudentRecordByAnyId(label);
+					if (recordByIdLabel) {
+						record = recordByIdLabel;
+						ids.push(normalizeAuthorId(label));
+					} else {
+						record = findUniqueStudentByLabel(label);
+					}
 				}
 
 				if (record) {
+					const normalizedLabel = normalizeAuthorId(label);
+					const labelMatchesRecordId = Boolean(
+						normalizedLabel &&
+							[record.studentId, record.notionId]
+								.map(normalizeAuthorId)
+								.filter(Boolean)
+								.includes(normalizedLabel),
+					);
 					if (record.notionId) ids.push(record.notionId);
 					if (record.studentId) ids.push(record.studentId);
-					if (!label && record.displayName) label = record.displayName;
+					if ((!label || labelMatchesRecordId) && record.displayName)
+						label = record.displayName;
 					if (!nickname && record.nickname) nickname = record.nickname;
 					if (!realName && record.realName) realName = record.realName;
 				}
@@ -3841,34 +4180,95 @@
 				return findUniqueStudentByLabel(author?.label);
 			}
 
-			function shouldMaskAuthor(author) {
-				if (state.viewer.isLoggedIn) return false;
-				const label = trimText(author?.label);
-				if (!label || Array.from(label).length !== 2) return false;
-
-				const nickname = trimText(author?.nickname);
-				if (nickname && nickname === label) return true;
-
-				const record = findStudentRecordForAuthor(author);
-				return Boolean(record && trimText(record.nickname) === label);
+			function sliceFirstChars(value, count = 2) {
+				return Array.from(trimText(value))
+					.slice(0, Math.max(0, count))
+					.join("");
 			}
 
-			function getAuthorAnimalAlias(author) {
+			function resolveAuthorNames(author) {
+				const label = trimText(author?.label);
+				const nickname = trimText(author?.nickname);
+				const realName = trimText(author?.realName);
+				if (label && nickname && realName) {
+					return { label, nickname, realName };
+				}
+				const record = findStudentRecordForAuthor(author);
+				return {
+					label: label || trimText(record?.displayName),
+					nickname: nickname || trimText(record?.nickname),
+					realName: realName || trimText(record?.realName),
+				};
+			}
+
+			function shouldApplySameNameRule(author) {
+				const { nickname, realName } = resolveAuthorNames(author);
+				if (!realName || !nickname) return false;
+				return realName === nickname;
+			}
+
+			function shouldMaskAuthorWithAlias(author) {
+				if (state.viewer.isLoggedIn) return false;
+				return shouldApplySameNameRule(author);
+			}
+
+			function getAuthorLoggedInShortLabel(author) {
+				if (!state.viewer.isLoggedIn) return "";
+				if (!shouldApplySameNameRule(author)) return "";
+				const { label, realName, nickname } = resolveAuthorNames(author);
+				return (
+					sliceFirstChars(realName, 2) ||
+					sliceFirstChars(label, 2) ||
+					sliceFirstChars(nickname, 2)
+				);
+			}
+
+			function pickAuthorAliasWithLowDuplication() {
+				if (!AUTHOR_ALIAS_CANDIDATES.length) return "";
+				const usage = state.authorAliasUsageCountByName;
+				const unused = AUTHOR_ALIAS_CANDIDATES.filter(
+					(alias) => !usage.has(alias),
+				);
+				if (unused.length > 0) {
+					return unused[Math.floor(Math.random() * unused.length)];
+				}
+				let minCount = Infinity;
+				AUTHOR_ALIAS_CANDIDATES.forEach((alias) => {
+					const count = usage.get(alias) || 0;
+					if (count < minCount) minCount = count;
+				});
+				const candidates = AUTHOR_ALIAS_CANDIDATES.filter(
+					(alias) => (usage.get(alias) || 0) === minCount,
+				);
+				return candidates[Math.floor(Math.random() * candidates.length)] || "";
+			}
+
+			function shouldMaskAuthor(author) {
+				return shouldMaskAuthorWithAlias(author);
+			}
+
+			function getAuthorAliasLabel(author) {
 				const key = trimText(author?.key || author?.label);
 				if (!key) return "";
-				const existing = state.animalAliasByAuthorKey.get(key);
+				const existing = state.authorAliasByAuthorKey.get(key);
 				if (existing) return existing;
-				const alias =
-					ANIMAL_ALIASES[hashString(key) % ANIMAL_ALIASES.length];
-				state.animalAliasByAuthorKey.set(key, alias);
+				const alias = pickAuthorAliasWithLowDuplication();
+				if (!alias) return "";
+				state.authorAliasByAuthorKey.set(key, alias);
+				state.authorAliasUsageCountByName.set(
+					alias,
+					(state.authorAliasUsageCountByName.get(alias) || 0) + 1,
+				);
 				return alias;
 			}
 
 			function getAuthorDisplayLabel(author) {
 				const base = trimText(author?.label);
 				if (!base) return "";
+				const loggedInShort = getAuthorLoggedInShortLabel(author);
+				if (loggedInShort) return loggedInShort;
 				if (!shouldMaskAuthor(author)) return base;
-				return getAuthorAnimalAlias(author) || base;
+				return getAuthorAliasLabel(author) || base;
 			}
 
 			function isViewerWork(work) {
@@ -3978,108 +4378,218 @@
 				};
 			}
 
-			const FILTER_LABELS = {
-				tag: "キーワード",
-				author: "作者",
-				studio: "教室",
-			};
-			const filterControls = {};
+			const GROUP_FILTER_TYPES = new Set(["tag", "author", "studio"]);
 
-			function createFilterControl(root, type, label) {
-				root.innerHTML = `
-					<button class="filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="filter-menu-${type}">
-						<span class="filter-trigger-text">${label}</span>
-						<span class="filter-caret">▾</span>
-					</button>
-					<div class="filter-menu" id="filter-menu-${type}" role="listbox"></div>
-				`;
-				const trigger = root.querySelector(".filter-trigger");
-				const text = root.querySelector(".filter-trigger-text");
-				const menu = root.querySelector(".filter-menu");
+			function isGroupFilterType(type) {
+				return GROUP_FILTER_TYPES.has(type);
+			}
 
-				trigger.addEventListener("click", (e) => {
-					e.stopPropagation();
-					toggleFilterMenu(type);
+			function isGroupingMode() {
+				return isGroupFilterType(state.filter.type) && !state.filter.value;
+			}
+
+			function hasSelectedGroupFilterValue() {
+				return isGroupFilterType(state.filter.type) && Boolean(state.filter.value);
+			}
+
+			function getSelectedGroupFilterLabel() {
+				const type = state.filter.type;
+				const value = state.filter.value;
+				if (!isGroupFilterType(type) || !value) return "";
+				return findFilterOptionLabel(state.filterOptions?.[type] || [], value) || value;
+			}
+
+			function syncFilterTypeSwitch() {
+				if (!els.filterTypeButtons?.length) return;
+				const currentType = isGroupFilterType(state.filter.type) ? state.filter.type : "";
+				els.filterTypeButtons.forEach((button) => {
+					const buttonType = trimText(button.dataset.filterType);
+					const isActive = buttonType === currentType;
+					button.classList.toggle("is-active", isActive);
+					button.setAttribute("aria-pressed", isActive ? "true" : "false");
 				});
-
-				return { root, trigger, text, menu, type, label };
 			}
 
-			function initFilterControls() {
-				filterControls.tag = createFilterControl(
-					els.filterTag,
-					"tag",
-					FILTER_LABELS.tag,
-				);
-				filterControls.author = createFilterControl(
-					els.filterAuthor,
-					"author",
-					FILTER_LABELS.author,
-				);
-				filterControls.studio = createFilterControl(
-					els.filterStudio,
-					"studio",
-					FILTER_LABELS.studio,
-				);
+			function syncGroupSortSwitch() {
+				if (!els.groupSortButtons?.length) return;
+				const currentSort = state.groupSort === "alpha" ? "alpha" : "count";
+				els.groupSortButtons.forEach((button) => {
+					const buttonSort = trimText(button.dataset.groupSort);
+					const isActive = buttonSort === currentSort;
+					button.classList.toggle("is-active", isActive);
+					button.setAttribute("aria-pressed", isActive ? "true" : "false");
+				});
 			}
 
-			function setFilterTrigger(control, value, displayLabel = "") {
-				if (value) {
-					control.text.textContent = displayLabel || value;
-					control.root.classList.add("has-value");
-				} else {
-					control.text.textContent = control.label;
-					control.root.classList.remove("has-value");
-				}
-			}
+			function updateGroupSortVisibility() {
+				const isGroupFilter = isGroupFilterType(state.filter.type);
+				const showSelected = hasSelectedGroupFilterValue();
+				const showSort = isGroupFilter && !showSelected;
 
-			function populateFilterMenu(control, options, total, selectedValue) {
-				control.menu.innerHTML = "";
-				const items = [
-					{ value: "__all__", label: "すべて", count: total },
-					...options.map(({ value, label, count }) => ({
-						value,
-						label: label || value,
-						count,
-					})),
-				];
-
-				items.forEach(({ value, label, count }) => {
-					const btn = document.createElement("button");
-					btn.type = "button";
-					btn.className = "filter-option";
-					if (selectedValue && value === selectedValue) {
-						btn.classList.add("is-selected");
+				if (els.groupSort) {
+					// 「全作品」時も右側レーンを残して、フィルタートグルの幅変化を防ぐ
+					els.groupSort.hidden = false;
+					if (isGroupFilter) {
+						els.groupSort.removeAttribute("aria-hidden");
+					} else {
+						els.groupSort.setAttribute("aria-hidden", "true");
 					}
-					btn.dataset.value = value;
-					btn.innerHTML = `
-						<span class="filter-option-label">${label}</span>
-						<span class="filter-option-count">${count}</span>
-					`;
-					btn.addEventListener("click", (e) => {
-						e.stopPropagation();
-						onFilterSelect(control.type, value);
-						closeAllFilterMenus();
-					});
-					control.menu.appendChild(btn);
-				});
-			}
-
-			function closeAllFilterMenus() {
-				Object.values(filterControls).forEach((control) => {
-					control.root.classList.remove("open");
-					control.trigger.setAttribute("aria-expanded", "false");
-				});
-			}
-
-			function toggleFilterMenu(type) {
-				const control = filterControls[type];
-				const isOpen = control.root.classList.contains("open");
-				closeAllFilterMenus();
-				if (!isOpen) {
-					control.root.classList.add("open");
-					control.trigger.setAttribute("aria-expanded", "true");
 				}
+				if (els.groupSortToggle) {
+					els.groupSortToggle.hidden = !showSort;
+					if (showSort) {
+						syncGroupSortSwitch();
+					}
+				}
+				if (els.groupSelectedToggle) {
+					els.groupSelectedToggle.hidden = !showSelected;
+				}
+				if (els.groupSelectedValue) {
+					if (showSelected) {
+						const selectedLabel = getSelectedGroupFilterLabel();
+						els.groupSelectedValue.textContent = selectedLabel;
+						if (selectedLabel) {
+							els.groupSelectedValue.title = selectedLabel;
+						} else {
+							els.groupSelectedValue.removeAttribute("title");
+						}
+					} else {
+						els.groupSelectedValue.textContent = "";
+						els.groupSelectedValue.removeAttribute("title");
+					}
+				}
+				if (els.groupBackButton) {
+					els.groupBackButton.textContent = "一覧にもどる";
+				}
+			}
+
+			function buildGroupEntriesForWork(type, work) {
+				if (type === "tag") {
+					const tags = Array.isArray(work?.tags)
+						? uniqueStrings(work.tags.map((tag) => trimText(tag)))
+						: [];
+					return tags.map((value) => ({ value, label: value }));
+				}
+				if (type === "studio") {
+					const studio = trimText(work?.studio);
+					return studio ? [{ value: studio, label: studio }] : [];
+				}
+				if (type === "author") {
+					const values = new Map();
+					getWorkAuthors(work).forEach((author) => {
+						const value = trimText(author?.key);
+						if (!value || values.has(value)) return;
+						values.set(value, {
+							value,
+							label: getAuthorLabelForChip(author) || value,
+						});
+					});
+					return Array.from(values.values());
+				}
+				return [];
+			}
+
+			function sortGroupedCards(items) {
+				const sorted = [...items];
+				const compareLabel = (a, b) =>
+					a.label.localeCompare(b.label, "ja", {
+						numeric: true,
+						sensitivity: "base",
+					});
+				if (state.groupSort === "alpha") {
+					sorted.sort(compareLabel);
+					return sorted;
+				}
+				sorted.sort((a, b) => {
+					if (b.count !== a.count) return b.count - a.count;
+					return compareLabel(a, b);
+				});
+				return sorted;
+			}
+
+			function buildGroupedCards(type, works) {
+				const groups = new Map();
+				works.forEach((work) => {
+					const entries = buildGroupEntriesForWork(type, work);
+					entries.forEach(({ value, label }) => {
+						if (!value) return;
+						const current = groups.get(value) || {
+							value,
+							label: label || value,
+							count: 0,
+							representative: null,
+						};
+						current.count += 1;
+						if (!current.representative) current.representative = work;
+						groups.set(value, current);
+					});
+				});
+
+				const list = Array.from(groups.values()).map((group) => {
+					const work = group.representative;
+					const thumb = work?.thumb || work?.images?.[0] || PLACEHOLDER;
+					return {
+						value: group.value,
+						label: group.label,
+						count: group.count,
+						thumb,
+					};
+				});
+				return sortGroupedCards(list);
+			}
+
+			function renderGroupedGrid(type, groups) {
+				els.grid.innerHTML = "";
+				const fragment = document.createDocumentFragment();
+				if (!Array.isArray(groups) || groups.length === 0) {
+					const emptyMessage = document.createElement("p");
+					emptyMessage.className = "empty-message";
+					emptyMessage.textContent = "表示できる項目がありません。";
+					fragment.appendChild(emptyMessage);
+					els.grid.appendChild(fragment);
+					els.grid.hidden = false;
+					scheduleGridCentering(true);
+					return;
+				}
+
+				groups.forEach((group) => {
+					const card = document.createElement("div");
+					card.className = "card card--group";
+					card.dataset.filterType = type;
+					card.dataset.filterValue = group.value;
+
+					const thumb = document.createElement("div");
+					thumb.className = "thumb";
+					const img = document.createElement("img");
+					img.src = group.thumb;
+					img.loading = "lazy";
+					img.alt = group.label;
+					img.onerror = () => {
+						img.src = PLACEHOLDER;
+					};
+					thumb.appendChild(img);
+
+					const badge = document.createElement("span");
+					badge.className = "group-count-badge";
+					badge.textContent = `${group.count}作品`;
+					thumb.appendChild(badge);
+
+					const titleBadge = document.createElement("span");
+					titleBadge.className = "group-title-badge";
+					titleBadge.textContent = group.label;
+					titleBadge.title = group.label;
+					thumb.appendChild(titleBadge);
+
+					card.appendChild(thumb);
+					card.addEventListener("click", () =>
+						setActiveFilter(type, group.value, true),
+					);
+					fragment.appendChild(card);
+				});
+
+				els.grid.appendChild(fragment);
+				els.grid.hidden = false;
+				scheduleGridCentering(true);
 			}
 
 			function applyFilter(resetScroll = false) {
@@ -4100,7 +4610,15 @@
 					});
 				}
 				state.filtered = works;
-				renderGrid(works);
+				if (isGroupFilterType(type) && !value) {
+					const groups = buildGroupedCards(type, works);
+					state.groupedVisibleCount = groups.length;
+					renderGroupedGrid(type, groups);
+				} else {
+					state.groupedVisibleCount = 0;
+					renderGrid(works);
+				}
+				updateGroupSortVisibility();
 				updateCount();
 				if (resetScroll) {
 					window.scrollTo(0, 0);
@@ -4177,48 +4695,52 @@
 					const emptyMessage = document.createElement("p");
 					emptyMessage.className = "empty-message";
 					emptyMessage.textContent =
-						"さくひん が かんせい したら、 せんせい が さつえい して ここにならべます…";
+						"さくひん が かんせい したら、 しゃしん を とって ここに ならべます！";
 					fragment.appendChild(emptyMessage);
 					els.grid.appendChild(fragment);
 					els.grid.hidden = false;
-					requestAnimationFrame(() => applyGridCentering());
+					scheduleGridCentering(true);
 					return;
 				}
 
-				const monthCounts = buildMonthCounts(works);
-				const MONTH_MARKER_MIN = 6;
-				const yearMonthMarkerFlags = buildYearMonthMarkerFlags(
-					monthCounts,
-					MONTH_MARKER_MIN,
-				);
+				const showDateMarkers = !state.filter.type;
+				let yearMonthMarkerFlags = new Map();
+				if (showDateMarkers) {
+					const monthCounts = buildMonthCounts(works);
+					const MONTH_MARKER_MIN = 6;
+					yearMonthMarkerFlags = buildYearMonthMarkerFlags(
+						monthCounts,
+						MONTH_MARKER_MIN,
+					);
+				}
 				let lastYear = "";
 				let lastMonth = "";
 				let lastSection = "";
 
 				works.forEach((w) => {
-					const { year, month } = parseYearMonth(w.completed_date);
-					if (!year) {
-						if (lastSection !== "unknown") {
-							fragment.appendChild(createMarker("日付不明", "year"));
-							lastSection = "unknown";
-							lastYear = "";
-							lastMonth = "";
-						}
-					} else {
-						if (lastSection !== "date" || year !== lastYear) {
-							fragment.appendChild(createMarker(`${year}年`, "year"));
-							lastYear = year;
-							lastMonth = "";
-							lastSection = "date";
-						}
-						if (month && month !== lastMonth) {
-							const showMonthMarkers = yearMonthMarkerFlags.get(year);
-							if (showMonthMarkers) {
-								fragment.appendChild(
-									createMarker(`${Number(month)}月`, "month"),
-								);
+					if (showDateMarkers) {
+						const { year, month } = parseYearMonth(w.completed_date);
+						if (!year) {
+							if (lastSection !== "unknown") {
+								fragment.appendChild(createMarker("日付不明", "year"));
+								lastSection = "unknown";
+								lastYear = "";
+								lastMonth = "";
 							}
-							lastMonth = month;
+						} else {
+							if (lastSection !== "date" || year !== lastYear) {
+								fragment.appendChild(createMarker(`${year}年`, "year"));
+								lastYear = year;
+								lastMonth = "";
+								lastSection = "date";
+							}
+							if (month && month !== lastMonth) {
+								const showMonthMarkers = yearMonthMarkerFlags.get(year);
+								if (showMonthMarkers) {
+									fragment.appendChild(createMarker(`${Number(month)}月`, "month"));
+								}
+								lastMonth = month;
+							}
 						}
 					}
 
@@ -4236,6 +4758,15 @@
 						img.src = PLACEHOLDER;
 					};
 					thumb.appendChild(img);
+					const imageCount = Array.isArray(w.images)
+						? w.images.filter(Boolean).length
+						: 0;
+					if (imageCount > 1) {
+						const imageCountBadge = document.createElement("span");
+						imageCountBadge.className = "group-count-badge image-count-badge";
+						imageCountBadge.textContent = String(imageCount);
+						thumb.appendChild(imageCountBadge);
+					}
 
 					const body = document.createElement("div");
 					body.className = "card-body";
@@ -4275,7 +4806,7 @@
 
 				els.grid.appendChild(fragment);
 				els.grid.hidden = false;
-				requestAnimationFrame(() => applyGridCentering());
+				scheduleGridCentering(true);
 			}
 
 			function getGridColumnCount() {
@@ -4285,12 +4816,24 @@
 				return template.split(" ").filter(Boolean).length;
 			}
 
-			function applyGridCentering() {
+			function scheduleGridCentering(force = false) {
+				if (state.gridCenteringRafId) {
+					cancelAnimationFrame(state.gridCenteringRafId);
+				}
+				state.gridCenteringRafId = requestAnimationFrame(() => {
+					state.gridCenteringRafId = 0;
+					applyGridCentering(force);
+				});
+			}
+
+			function applyGridCentering(force = false) {
 				if (els.grid.hidden) return;
 				const columns = getGridColumnCount();
-				if (columns <= 1) return;
+				if (!force && columns === state.gridCenteringLastColumns) return;
+				state.gridCenteringLastColumns = columns;
 
 				els.grid.querySelectorAll(".grid-spacer").forEach((el) => el.remove());
+				if (columns <= 1) return;
 
 				let segmentCards = [];
 				const children = Array.from(els.grid.children);
@@ -4328,6 +4871,10 @@
 			function updateCount() {
 				const total = state.works.length;
 				const filtered = state.filtered.length;
+				if (isGroupingMode()) {
+					els.count.textContent = `${state.groupedVisibleCount} groups / ${filtered} works`;
+					return;
+				}
 				if (total === filtered) {
 					els.count.textContent = `${total} works`;
 				} else {
@@ -4339,20 +4886,29 @@
 				const params = new URLSearchParams(location.search);
 				const type = params.get("filter") || "";
 				const value = params.get("value") || "";
-				if (
-					type &&
-					value &&
-					["tag", "author", "studio", "viewer"].includes(type)
-				) {
+				if (!["tag", "author", "studio", "viewer"].includes(type)) return;
+				if (type === "viewer") {
+					if (value === "self") state.filter = { type, value };
+					return;
+				}
+				if (type && value) {
 					state.filter = { type, value };
+					return;
+				}
+				if (type && !value) {
+					state.filter = { type, value: "" };
 				}
 			}
 
 			function writeFilterToUrl() {
 				const params = new URLSearchParams(location.search);
-				if (state.filter.type && state.filter.value) {
+				if (state.filter.type) {
 					params.set("filter", state.filter.type);
-					params.set("value", state.filter.value);
+					if (state.filter.value) {
+						params.set("value", state.filter.value);
+					} else {
+						params.delete("value");
+					}
 				} else {
 					params.delete("filter");
 					params.delete("value");
@@ -4379,11 +4935,21 @@
 			function getViewerSelfLabel() {
 				const name =
 					trimText(state.viewer.displayName) || trimText(state.viewer.nickname);
-				if (name) return `${name}さんの さくひん`;
-				return "あなたの さくひん";
+				if (name) return `${name} さん`;
+				return "あなた";
+			}
+
+			function updateHeaderTitle() {
+				if (!els.title) return;
+				const next = state.viewer.isLoggedIn
+					? "さくひんギャラリー"
+					: "生徒作品ギャラリー";
+				els.title.textContent = next;
+				document.title = next;
 			}
 
 			function updateViewerActions() {
+				updateHeaderTitle();
 				if (
 					!els.viewerActions ||
 					!els.viewerSelfButton ||
@@ -4408,77 +4974,80 @@
 				els.viewerAllButton.classList.toggle("is-active", !isSelfView);
 				els.viewerSelfButton.setAttribute("aria-pressed", isSelfView ? "true" : "false");
 				els.viewerAllButton.setAttribute("aria-pressed", !isSelfView ? "true" : "false");
-
-				if (isSelfView) {
-					closeAllFilterMenus();
-				}
 				els.filters.hidden = isSelfView;
 			}
 
-			function syncFilterControls(options) {
-				const selectedTag =
-					state.filter.type === "tag" ? state.filter.value : "";
-				const selectedAuthor =
-					state.filter.type === "author" ? state.filter.value : "";
-				const selectedStudio =
-					state.filter.type === "studio" ? state.filter.value : "";
-
-				populateFilterMenu(
-					filterControls.tag,
-					options.tag,
-					options.total,
-					selectedTag,
-				);
-				populateFilterMenu(
-					filterControls.author,
-					options.author,
-					options.total,
-					selectedAuthor,
-				);
-				populateFilterMenu(
-					filterControls.studio,
-					options.studio,
-					options.total,
-					selectedStudio,
-				);
-
-				setFilterTrigger(
-					filterControls.tag,
-					selectedTag,
-					findFilterOptionLabel(options.tag, selectedTag),
-				);
-				setFilterTrigger(
-					filterControls.author,
-					selectedAuthor,
-					findFilterOptionLabel(options.author, selectedAuthor),
-				);
-				setFilterTrigger(
-					filterControls.studio,
-					selectedStudio,
-					findFilterOptionLabel(options.studio, selectedStudio),
-				);
+			function syncFilterControls() {
+				syncFilterTypeSwitch();
 				updateViewerActions();
+				updateGroupSortVisibility();
+			}
+
+			function setHeaderHidden(hidden) {
+				if (!els.header) return;
+				const next = Boolean(hidden);
+				if (state.headerHidden === next) return;
+				state.headerHidden = next;
+				els.header.classList.toggle("is-hidden", next);
+			}
+
+			function syncHeaderVisibilityByScroll() {
+				if (!els.header) return;
+				if (state.bodyScrollLocked) {
+					setHeaderHidden(false);
+					return;
+				}
+				const currentY = Math.max(0, window.scrollY || 0);
+				const delta = currentY - state.headerLastScrollY;
+				state.headerLastScrollY = currentY;
+
+				if (currentY <= 4) {
+					setHeaderHidden(false);
+					return;
+				}
+				if (Math.abs(delta) < 2) return;
+				if (delta > 8 && currentY > 64) {
+					setHeaderHidden(true);
+					return;
+				}
+				if (delta < -4) {
+					setHeaderHidden(false);
+				}
+			}
+
+			function queueHeaderScrollUpdate() {
+				if (state.headerScrollRafId) return;
+				state.headerScrollRafId = requestAnimationFrame(() => {
+					state.headerScrollRafId = 0;
+					syncHeaderVisibilityByScroll();
+				});
+			}
+
+			function resetHeaderScrollState() {
+				state.headerLastScrollY = Math.max(0, window.scrollY || 0);
+				if (state.headerLastScrollY <= 4) {
+					setHeaderHidden(false);
+				}
 			}
 
 			function setActiveFilter(type, value, resetScroll = false) {
-				if (!type || !value) {
+				const normalizedType = trimText(type);
+				const normalizedValue = trimText(value);
+				if (!normalizedType) {
+					state.filter = { type: "", value: "" };
+				} else if (
+					normalizedType === "viewer" &&
+					normalizedValue !== "self"
+				) {
 					state.filter = { type: "", value: "" };
 				} else {
-					state.filter = { type, value };
+					state.filter = { type: normalizedType, value: normalizedValue };
 				}
 				writeFilterToUrl();
 				if (state.filterOptions) {
-					syncFilterControls(state.filterOptions);
+					syncFilterControls();
 				}
 				applyFilter(resetScroll);
-			}
-
-			function onFilterSelect(type, value) {
-				if (!value || value === "__all__") {
-					setActiveFilter("", "", true);
-					return;
-				}
-				setActiveFilter(type, value, true);
 			}
 
 			function toSafeCount(value) {
@@ -4720,7 +5289,7 @@
 				const backBottom = document.createElement("button");
 				backBottom.className = "modal-back";
 				backBottom.type = "button";
-				backBottom.textContent = "＜ 戻る";
+				backBottom.textContent = "＜ もどる";
 				backBottom.addEventListener("click", closeModal);
 				footer.appendChild(backBottom);
 				body.appendChild(footer);
@@ -4761,17 +5330,33 @@
 			}
 
 			function lockBodyScroll() {
-				if (document.body.classList.contains("modal-open")) return;
+				if (state.bodyScrollLocked) return;
+				setHeaderHidden(false);
 				state.modalScrollY = window.scrollY || 0;
+				state.bodyScrollLocked = true;
 				document.body.classList.add("modal-open");
 				document.body.style.top = `-${state.modalScrollY}px`;
+				document.documentElement.style.overflow = "hidden";
+			}
+
+			function clearScrollLockStyles() {
+				document.body.classList.remove("modal-open");
+				document.body.style.top = "";
+				document.documentElement.style.overflow = "";
 			}
 
 			function unlockBodyScroll(resetScroll = false) {
-				if (!document.body.classList.contains("modal-open")) return;
-				document.body.classList.remove("modal-open");
-				document.body.style.top = "";
-				window.scrollTo(0, resetScroll ? 0 : state.modalScrollY || 0);
+				const restoreY = resetScroll ? 0 : state.modalScrollY || 0;
+				state.bodyScrollLocked = false;
+				clearScrollLockStyles();
+				window.scrollTo(0, restoreY);
+				resetHeaderScrollState();
+				requestAnimationFrame(() => {
+					if (state.bodyScrollLocked) return;
+					clearScrollLockStyles();
+					window.scrollTo(0, restoreY);
+					resetHeaderScrollState();
+				});
 			}
 
 			function updateModalImageMaxHeight(bodyEl) {
@@ -4803,14 +5388,33 @@
 			}
 
 			function bindEvents() {
-				document.addEventListener("click", (e) => {
-					if (!e.target.closest(".filter-select")) {
-						closeAllFilterMenus();
+				els.filterTypeToggle?.addEventListener("click", (event) => {
+					const target = event.target;
+					if (!(target instanceof Element)) return;
+					const button = target.closest("button[data-filter-type]");
+					if (!(button instanceof HTMLElement)) return;
+					const nextType = trimText(button.dataset.filterType || "");
+					if (isGroupFilterType(nextType)) {
+						setActiveFilter(nextType, "", true);
+						return;
 					}
+					setActiveFilter("", "", true);
 				});
-				window.addEventListener("blur", closeAllFilterMenus);
-				document.addEventListener("visibilitychange", () => {
-					if (document.hidden) closeAllFilterMenus();
+				els.groupBackButton?.addEventListener("click", () => {
+					if (!isGroupFilterType(state.filter.type)) return;
+					setActiveFilter(state.filter.type, "", true);
+				});
+				els.groupSortToggle?.addEventListener("click", (event) => {
+					const target = event.target;
+					if (!(target instanceof Element)) return;
+					const button = target.closest("button[data-group-sort]");
+					if (!(button instanceof HTMLElement)) return;
+					const next = trimText(button.dataset.groupSort || "");
+					state.groupSort = next === "alpha" ? "alpha" : "count";
+					if (isGroupingMode()) {
+						applyFilter(false);
+					}
+					syncGroupSortSwitch();
 				});
 				els.viewerSelfButton?.addEventListener("click", () => {
 					setActiveFilter("viewer", "self", true);
@@ -4827,16 +5431,20 @@
 				});
 				window.addEventListener("keydown", (e) => {
 					if (e.key === "Escape") {
-						closeAllFilterMenus();
 						closeModal();
 					}
+				});
+				window.addEventListener("scroll", queueHeaderScrollUpdate, {
+					passive: true,
 				});
 				window.addEventListener("resize", () => {
 					if (els.modal.classList.contains("open")) {
 						const body = els.modalContent.querySelector(".modal-body");
 						if (body) updateModalImageMaxHeight(body);
 					}
-					applyGridCentering();
+					scheduleGridCentering(false);
+					resetHeaderScrollState();
+					queueHeaderScrollUpdate();
 				});
 			}
 
@@ -4879,8 +5487,9 @@
 				if (state.filter.type === "viewer") {
 					state.filter.value = "self";
 				}
-				initFilterControls();
-				syncFilterControls(state.filterOptions);
+				syncFilterControls();
+				resetHeaderScrollState();
+				syncHeaderVisibilityByScroll();
 				bindEvents();
 				applyFilter();
 
