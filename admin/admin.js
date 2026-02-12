@@ -1653,7 +1653,8 @@ function saveActiveDraftFromForm() {
 
 	active.coverIndex = state.upload.coverIndex;
 	active.completedDate = trimText(qs("#upload-completed-date")?.value);
-	active.groupValue = "";
+	// Keep inferred/selected participant-group index for draft switching.
+	active.groupValue = trimText(active.groupValue);
 	active.classroom = normalizeClassroom(qs("#upload-classroom")?.value);
 	active.venue = "";
 	active.authorIds = getSelectedAuthorIds(qs("#upload-author"));
