@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>先生専用アップロード</title>
 		<link rel="stylesheet" href="./shared/gallery-core.css" />
-		<link rel="stylesheet" href="./admin/admin.css?v=20260210-1" />
+		<link rel="stylesheet" href="./admin/admin.css?v=20260212-4" />
 	</head>
 	<body>
 		<div
@@ -79,7 +79,10 @@
 						<div class="form-row">
 							<label class="label" for="upload-files">画像</label>
 							<input id="upload-files" class="input" type="file" accept="image/*" multiple />
-							<div class="subnote">複数作品ぶんをまとめて選択できます。選択後に作品キューで分割・統合して登録します。</div>
+							<details class="help-toggle">
+								<summary class="help-toggle__summary" aria-label="画像項目の説明を表示">?</summary>
+								<div class="help-toggle__body subnote">複数作品ぶんをまとめて選択できます。選択後に作品キューで分割・統合して登録します。</div>
+							</details>
 						</div>
 
 						<div class="form-row">
@@ -96,9 +99,12 @@
 						</div>
 
 						<div class="form-row">
-							<div class="help">
-								表示中の作品の画像です。大画像で確認し、サムネイル選択後に「この画像を表紙にする」で代表画像を設定できます。
-							</div>
+							<details class="help-toggle">
+								<summary class="help-toggle__summary" aria-label="画像ビューアの説明を表示">?</summary>
+								<div class="help-toggle__body help">
+									表示中の作品の画像です。大画像で確認し、サムネイル選択後に「この画像を表紙にする」で代表画像を設定できます。
+								</div>
+							</details>
 							<div id="upload-previews" class="upload-viewer" aria-label="画像ビューア"></div>
 							<div class="toolbar toolbar--upload-images">
 								<div id="upload-image-selection-status" class="subnote">画像をチェックして作品を分割できます。</div>
@@ -106,7 +112,7 @@
 							</div>
 						</div>
 
-						<div class="form-grid">
+						<div class="form-grid form-grid--meta">
 							<div class="form-row">
 								<label class="label" for="upload-completed-date">完成日（撮影日）</label>
 								<input id="upload-completed-date" class="input" type="date" />
@@ -114,25 +120,12 @@
 							</div>
 
 							<div class="form-row">
-								<label class="label" for="upload-group">教室/会場（開催グループ）</label>
-								<select id="upload-group" class="input">
-									<option value="">自動/手動</option>
-								</select>
-								<div class="subnote">
-									同日に複数グループがある場合はここで選択します。
-								</div>
-							</div>
-
-							<div class="form-row">
 								<label class="label" for="upload-classroom">教室（Notion保存値）</label>
 								<select id="upload-classroom" class="input"></select>
-								<div class="subnote">保存時に「〇〇教室」へ正規化します。</div>
-							</div>
-
-							<div class="form-row">
-								<label class="label" for="upload-venue">会場（任意）</label>
-								<select id="upload-venue" class="input"></select>
-								<div id="upload-venue-warning" class="warning" hidden></div>
+								<details class="help-toggle">
+									<summary class="help-toggle__summary" aria-label="教室項目の説明を表示">?</summary>
+									<div class="help-toggle__body subnote">保存時に「〇〇教室」へ正規化します。</div>
+								</details>
 							</div>
 						</div>
 
@@ -140,9 +133,12 @@
 							<div class="form-row">
 								<div id="upload-author-label" class="label">作者</div>
 								<select id="upload-author" class="input author-select-native" multiple size="6" hidden aria-hidden="true"></select>
-								<div class="subnote">
-									候補ボタン + 名簿検索で複数選択できます。表示は「ニックネーム｜本名」です。
-								</div>
+								<details class="help-toggle">
+									<summary class="help-toggle__summary" aria-label="作者選択の説明を表示">?</summary>
+									<div class="help-toggle__body subnote">
+										候補ボタン + 名簿検索で複数選択できます。表示は「ニックネーム｜本名」です。
+									</div>
+								</details>
 								<div class="author-picker" role="group" aria-labelledby="upload-author-label">
 									<div id="upload-author-selected" class="chips" aria-label="選択中の作者" hidden></div>
 									<div id="upload-author-candidate-notes" class="candidate-notes" hidden></div>
@@ -237,13 +233,14 @@
 
 				<section id="view-tools" class="view" data-view="tools">
 					<h2 class="view-title">ツール</h2>
-					<div class="panel">
-						<div class="label">タグ管理（タグDB）</div>
-						<div id="tools-tag-relation-editor"></div>
-						<div class="subnote">
-							親/子の検索候補からタグを新規作成し、既存タグ同士の親子関係を追加できます。
+						<div class="panel">
+							<div class="label">タグ管理（タグDB）</div>
+							<div id="tools-tag-relation-editor"></div>
+							<details class="help-toggle">
+								<summary class="help-toggle__summary" aria-label="タグ管理の説明を表示">?</summary>
+								<div class="help-toggle__body subnote">親/子の検索候補からタグを新規作成し、既存タグ同士の親子関係を追加できます。</div>
+							</details>
 						</div>
-					</div>
 					<div class="panel">
 						<div class="toolbar">
 							<div>
@@ -254,9 +251,12 @@
 								タグ親子関係を作品へ反映
 							</button>
 						</div>
-						<div class="subnote">
-							タグDBの親子関係・統合（merged）を基準に、既存作品タグを再計算してNotionへ反映します。
-						</div>
+						<details class="help-toggle">
+							<summary class="help-toggle__summary" aria-label="タグ親子関係反映の説明を表示">?</summary>
+							<div class="help-toggle__body subnote">
+								タグDBの親子関係・統合（merged）を基準に、既存作品タグを再計算してNotionへ反映します。
+							</div>
+						</details>
 					</div>
 					<div class="panel">
 						<div class="toolbar">
@@ -268,9 +268,12 @@
 								タグインデックス再生成
 							</button>
 						</div>
-						<div class="subnote">
-							NotionのタグDBを読み直して `tags_index.json` を再生成します。
-						</div>
+						<details class="help-toggle">
+							<summary class="help-toggle__summary" aria-label="タグインデックスの説明を表示">?</summary>
+							<div class="help-toggle__body subnote">
+								NotionのタグDBを読み直して `tags_index.json` を再生成します。
+							</div>
+						</details>
 					</div>
 				</section>
 			</main>
@@ -279,6 +282,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260212-1"></script>
+		<script type="module" src="./admin/admin.js?v=20260212-4"></script>
 	</body>
 </html>
