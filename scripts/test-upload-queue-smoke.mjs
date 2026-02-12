@@ -111,6 +111,7 @@ function buildResult({
 	cardCount,
 	statusText,
 	selectionText,
+	tagOrderOk,
 	pageErrors,
 	consoleErrors,
 	errorMessage = "",
@@ -120,6 +121,7 @@ function buildResult({
 		cardCount: Number(cardCount || 0),
 		statusText: String(statusText || ""),
 		selectionText: String(selectionText || ""),
+		tagOrderOk: Boolean(tagOrderOk),
 		pageErrors: Array.isArray(pageErrors) ? pageErrors : [],
 		consoleErrors: Array.isArray(consoleErrors) ? consoleErrors : [],
 		errorMessage: String(errorMessage || ""),
@@ -151,20 +153,30 @@ async function runSmoke(files, port) {
 		const cardCount = await page.locator("#upload-draft-list .upload-draft-card").count();
 		const statusText = await page.locator("#upload-draft-status").innerText();
 		const selectionText = await page.locator("#upload-image-selection-status").innerText();
+		const tagOrderOk = await page.evaluate(() => {
+			const editor = document.querySelector("#upload-tag-editor");
+			if (!editor) return false;
+			const selectedChips = editor.querySelector(".chips");
+			const tagInput = editor.querySelector(".tag-input");
+			if (!selectedChips || !tagInput) return false;
+			const relation = selectedChips.compareDocumentPosition(tagInput);
+			return Boolean(relation & Node.DOCUMENT_POSITION_FOLLOWING);
+		});
 
 		await fs.mkdir(TEST_RESULTS_DIR, { recursive: true });
 		await page.screenshot({ path: SCREENSHOT_PATH, fullPage: true });
 
 		const syntaxLikeErrors = [...pageErrors, ...consoleErrors].filter((message) => /syntaxerror|unexpected token|already been declared/i.test(message));
-		const ok = cardCount >= 2 && syntaxLikeErrors.length === 0;
+		const ok = cardCount >= 2 && syntaxLikeErrors.length === 0 && tagOrderOk;
 		return buildResult({
 			ok,
 			cardCount,
 			statusText,
 			selectionText,
+			tagOrderOk,
 			pageErrors,
 			consoleErrors,
-			errorMessage: ok ? "" : `Smoke failed: cards=${cardCount}, syntaxErrors=${syntaxLikeErrors.length}`,
+			errorMessage: ok ? "" : `Smoke failed: cards=${cardCount}, syntaxErrors=${syntaxLikeErrors.length}, tagOrderOk=${tagOrderOk}`,
 		});
 	} finally {
 		await browser.close();

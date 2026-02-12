@@ -19,11 +19,13 @@ const state = {
 	upload: {
 		files: [],
 		coverIndex: 0,
+		viewerCurrentIndex: 0,
 		explicitTagIds: [],
 		readyTouched: false,
 		authorCandidates: [],
 		resetTagState: null,
 		setTagState: null,
+		tagEditor: null,
 		drafts: [],
 		activeDraftId: "",
 		selectedDraftIds: [],
@@ -542,7 +544,7 @@ function renderChips(root, { explicitIds, derivedIds, onRemove }) {
 	const mkChip = (id, { derived }) => {
 		const tag = state.tagsById.get(id);
 		const name = tag?.name || id;
-		const chip = el("span", { class: `chip${derived ? " is-derived" : ""}` });
+		const chip = el("span", { class: `chip${derived ? " is-derived" : " chip--tag-selected"}` });
 		chip.appendChild(el("span", { text: name }));
 		if (!derived) {
 			const remove = el("button", { type: "button", "aria-label": "削除", text: "×" });
@@ -839,7 +841,7 @@ function renderPickedTagChip(root, { id, roleLabel, onClear }) {
 		return;
 	}
 	const name = state.tagsById.get(id)?.name || id;
-	const chip = el("span", { class: "chip" }, [el("span", { text: `${roleLabel}: ${name}` })]);
+	const chip = el("span", { class: "chip chip--tag-selected" }, [el("span", { text: `${roleLabel}: ${name}` })]);
 	const remove = el("button", { type: "button", text: "×" });
 	remove.addEventListener("click", (e) => {
 		e.preventDefault();
@@ -850,7 +852,7 @@ function renderPickedTagChip(root, { id, roleLabel, onClear }) {
 	root.appendChild(chip);
 }
 
-function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = () => [], onCreated = null }) {
+function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = () => [], onCreated = null, clearOnPick = false }) {
 	const renderSuggest = () => {
 		const q = trimText(inputEl.value);
 		suggestRoot.innerHTML = "";
@@ -866,8 +868,9 @@ function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = (
 				const resolvedId = resolveMergedTagId(tag.id);
 				if (!resolvedId) return;
 				onPick(resolvedId);
-				inputEl.value = state.tagsById.get(resolvedId)?.name || tag.name;
+				inputEl.value = clearOnPick ? "" : state.tagsById.get(resolvedId)?.name || tag.name;
 				suggestRoot.innerHTML = "";
+				if (clearOnPick) inputEl.focus();
 			});
 			suggestRoot.appendChild(item);
 		});
@@ -881,8 +884,9 @@ function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = (
 					if (!resolvedId) return;
 					onCreated?.(resolvedId);
 					onPick(resolvedId);
-					inputEl.value = state.tagsById.get(resolvedId)?.name || q;
+					inputEl.value = clearOnPick ? "" : state.tagsById.get(resolvedId)?.name || q;
 					suggestRoot.innerHTML = "";
+					if (clearOnPick) inputEl.focus();
 				},
 				{ relatedTagIds: getRelatedTagIds() },
 			);
@@ -890,29 +894,67 @@ function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = (
 	};
 
 	inputEl.addEventListener("input", debounce(renderSuggest, 120));
+	inputEl.addEventListener("focus", () => {
+		if (trimText(inputEl.value)) renderSuggest();
+	});
 	inputEl.addEventListener("blur", () => {
 		window.setTimeout(() => {
 			suggestRoot.innerHTML = "";
 		}, 120);
 	});
+	return {
+		renderSuggest,
+		clearSuggest: () => {
+			suggestRoot.innerHTML = "";
+		},
+	};
 }
 
-function createTagRelationEditor({ onTagAdded }) {
+function createTagRelationEditor({ onTagAdded, getRelatedTagIds = () => [], onRelationAdded = null } = {}) {
 	const root = el("div", { class: "tag-relation-editor" });
 	root.appendChild(el("div", { class: "subnote", text: "タグ親子設定（タグDB）" }));
 
 	let parentTagId = "";
 	let childTagId = "";
 
+	const pickFromRelated = (targetRoot, { selectedId, onPick, roleLabel }) => {
+		targetRoot.innerHTML = "";
+		const relatedIds = normalizeTagIdList(getRelatedTagIds());
+		if (relatedIds.length === 0) {
+			targetRoot.appendChild(el("div", { class: "subnote", text: "現在選択中タグなし" }));
+			return;
+		}
+		targetRoot.appendChild(el("div", { class: "subnote", text: `${roleLabel}候補（現在選択中タグ）` }));
+		const chips = el("div", { class: "chips" });
+		relatedIds.forEach((id) => {
+			const tag = state.tagsById.get(id);
+			if (!tag) return;
+			const chip = el("button", {
+				type: "button",
+				class: `chip chip--tag-selected tag-relation-editor__candidate${id === selectedId ? " is-active" : ""}`,
+			});
+			chip.appendChild(el("span", { text: tag.name || id }));
+			chip.addEventListener("click", () => onPick(id));
+			chips.appendChild(chip);
+		});
+		if (!chips.children.length) {
+			targetRoot.appendChild(el("div", { class: "subnote", text: "候補なし" }));
+			return;
+		}
+		targetRoot.appendChild(chips);
+	};
+
 	const parentInput = el("input", { class: "input input--sm", type: "text", placeholder: "親タグを検索" });
 	const parentSuggest = el("div", { class: "suggest" });
 	const parentPicker = el("div", { class: "tag-input" }, [parentInput, parentSuggest]);
 	const parentPicked = el("div", { class: "chips" });
+	const parentCandidates = el("div", { class: "tag-relation-editor__candidates" });
 
 	const childInput = el("input", { class: "input input--sm", type: "text", placeholder: "子タグを検索" });
 	const childSuggest = el("div", { class: "suggest" });
 	const childPicker = el("div", { class: "tag-input" }, [childInput, childSuggest]);
 	const childPicked = el("div", { class: "chips" });
+	const childCandidates = el("div", { class: "tag-relation-editor__candidates" });
 
 	const refreshPicked = () => {
 		renderPickedTagChip(parentPicked, {
@@ -933,10 +975,28 @@ function createTagRelationEditor({ onTagAdded }) {
 				refreshPicked();
 			},
 		});
+		pickFromRelated(parentCandidates, {
+			selectedId: parentTagId,
+			onPick: (id) => {
+				parentTagId = id;
+				parentInput.value = state.tagsById.get(id)?.name || "";
+				refreshPicked();
+			},
+			roleLabel: "親",
+		});
+		pickFromRelated(childCandidates, {
+			selectedId: childTagId,
+			onPick: (id) => {
+				childTagId = id;
+				childInput.value = state.tagsById.get(id)?.name || "";
+				refreshPicked();
+			},
+			roleLabel: "子",
+		});
 	};
 	refreshPicked();
 
-	bindTagPickerInput({
+	const parentBinder = bindTagPickerInput({
 		inputEl: parentInput,
 		suggestRoot: parentSuggest,
 		onPick: (id) => {
@@ -944,8 +1004,9 @@ function createTagRelationEditor({ onTagAdded }) {
 			refreshPicked();
 		},
 		onCreated: (id) => onTagAdded?.(id),
+		getRelatedTagIds,
 	});
-	bindTagPickerInput({
+	const childBinder = bindTagPickerInput({
 		inputEl: childInput,
 		suggestRoot: childSuggest,
 		onPick: (id) => {
@@ -953,14 +1014,17 @@ function createTagRelationEditor({ onTagAdded }) {
 			refreshPicked();
 		},
 		onCreated: (id) => onTagAdded?.(id),
+		getRelatedTagIds,
 	});
 
 	const addRelationBtn = el("button", { type: "button", class: "btn", text: "既存タグに親子関係を追加" });
 	addRelationBtn.addEventListener("click", async () => {
 		addRelationBtn.disabled = true;
 		try {
-			await addTagParentChildRelation(parentTagId, childTagId);
+			const result = await addTagParentChildRelation(parentTagId, childTagId);
 			showToast("タグの親子関係を追加しました");
+			onRelationAdded?.(result);
+			refreshPicked();
 		} catch (err) {
 			showToast(`親子関係の追加に失敗: ${err.message}`);
 		} finally {
@@ -970,8 +1034,8 @@ function createTagRelationEditor({ onTagAdded }) {
 
 	root.appendChild(
 		el("div", { class: "tag-relation-editor__grid" }, [
-			el("div", { class: "form-row" }, [el("label", { class: "label", text: "親タグ" }), parentPicker, parentPicked]),
-			el("div", { class: "form-row" }, [el("label", { class: "label", text: "子タグ" }), childPicker, childPicked]),
+			el("div", { class: "form-row" }, [el("label", { class: "label", text: "親タグ" }), parentPicked, parentCandidates, parentPicker]),
+			el("div", { class: "form-row" }, [el("label", { class: "label", text: "子タグ" }), childPicked, childCandidates, childPicker]),
 		]),
 	);
 	root.appendChild(el("div", { class: "tag-relation-editor__actions" }, [addRelationBtn]));
@@ -981,7 +1045,23 @@ function createTagRelationEditor({ onTagAdded }) {
 			text: "親/子の検索候補から新規タグを作成できます。作成後に「既存タグに親子関係を追加」で反映してください。",
 		}),
 	);
-	return root;
+	return {
+		root,
+		refreshContext: () => {
+			refreshPicked();
+			parentBinder.renderSuggest();
+			childBinder.renderSuggest();
+		},
+		resetSelection: () => {
+			parentTagId = "";
+			childTagId = "";
+			parentInput.value = "";
+			childInput.value = "";
+			parentBinder.clearSuggest();
+			childBinder.clearSuggest();
+			refreshPicked();
+		},
+	};
 }
 
 function renderTitleTagSuggest(root, { getTitle, getExplicitTagIds, onTagAdded }) {
@@ -1588,6 +1668,7 @@ function applyDraftToUploadForm(draft) {
 	const targetDraft = draft || null;
 	state.upload.files = targetDraft?.files ? targetDraft.files.slice() : [];
 	state.upload.coverIndex = targetDraft?.coverIndex || 0;
+	state.upload.viewerCurrentIndex = targetDraft?.coverIndex || 0;
 	state.upload.explicitTagIds = targetDraft?.explicitTagIds ? targetDraft.explicitTagIds.slice() : [];
 	state.upload.readyTouched = Boolean(targetDraft?.readyTouched);
 	state.upload.authorCandidates = targetDraft?.authorCandidates ? targetDraft.authorCandidates.slice() : [];
@@ -1653,36 +1734,40 @@ function renderUploadPreviews() {
 	normalizeUploadSelections();
 	state.upload.files = active.files;
 	state.upload.coverIndex = active.coverIndex;
-
-	(active.files || []).forEach((entry, idx) => {
-		const item = el("div", {
-			class: `preview${idx === active.coverIndex ? " is-cover" : ""}${state.upload.selectedFileIds.includes(entry.id) ? " is-selected" : ""}`,
-		});
-		const img = el("img", { src: entry.previewUrl, alt: "" });
-		const check = el("input", { class: "preview__select", type: "checkbox" });
-		check.checked = state.upload.selectedFileIds.includes(entry.id);
-		check.addEventListener("click", (e) => e.stopPropagation());
-		check.addEventListener("change", () => {
-			const selected = new Set(state.upload.selectedFileIds);
-			if (check.checked) selected.add(entry.id);
-			else selected.delete(entry.id);
-			state.upload.selectedFileIds = Array.from(selected);
-			renderUploadPreviews();
-		});
-
-		item.appendChild(img);
-		item.appendChild(check);
-		if (idx === active.coverIndex) item.appendChild(el("div", { class: "badge", text: "表紙" }));
-		item.addEventListener("click", () => {
-			active.coverIndex = idx;
-			state.upload.coverIndex = idx;
-			renderUploadPreviews();
-			renderUploadDraftList();
-		});
-		root.appendChild(item);
-	});
-
-updateUploadSelectionStatusText();
+	state.upload.viewerCurrentIndex = Math.max(
+		0,
+		Math.min(Number(state.upload.viewerCurrentIndex) || 0, Math.max(0, (active.files?.length || 1) - 1)),
+	);
+	const selectedIds = new Set(state.upload.selectedFileIds);
+	const viewer = buildViewer(
+		{ images: active.files || [] },
+		{
+			selectedKeys: selectedIds,
+			currentIndex: state.upload.viewerCurrentIndex,
+			getImageUrl: (entry) => entry?.previewUrl || "",
+			getImageKey: (entry) => entry?.id || "",
+			onCurrentChange: (idx) => {
+				state.upload.viewerCurrentIndex = idx;
+			},
+			onSelectionChange: (keys) => {
+				state.upload.selectedFileIds = keys.map((id) => trimText(id)).filter(Boolean);
+				updateUploadSelectionStatusText();
+			},
+			onMakeCover: ({ currentIndex }) => {
+				active.coverIndex = currentIndex;
+				state.upload.coverIndex = currentIndex;
+				state.upload.viewerCurrentIndex = currentIndex;
+				renderUploadDraftList();
+				showToast("表紙を変更しました");
+				return { nextIndex: currentIndex };
+			},
+			thumbBadgeText: ({ index }) => (index === active.coverIndex ? "表紙" : ""),
+		},
+	);
+	root.appendChild(viewer.main);
+	root.appendChild(viewer.strip);
+	root.appendChild(viewer.actions);
+	updateUploadSelectionStatusText();
 }
 
 function formatDateYmdInJst(date) {
@@ -1960,6 +2045,7 @@ function clearUploadSelectedFiles() {
 	state.upload.selectedFileIds = [];
 	state.upload.files = [];
 	state.upload.coverIndex = 0;
+	state.upload.viewerCurrentIndex = 0;
 	state.upload.explicitTagIds = [];
 	state.upload.readyTouched = false;
 	state.upload.authorCandidates = [];
@@ -2204,65 +2290,89 @@ function initStudentSearch() {
 	});
 }
 
-function initTagInput(prefix) {
-	const queryEl = qs(`#${prefix}-tag-query`);
-	const suggestRoot = qs(`#${prefix}-tag-suggest`);
-	const chipsRoot = qs(`#${prefix}-tag-chips`);
-	const derivedNote = qs(`#${prefix}-tag-derived-note`);
-	const childSuggestRoot = qs(`#${prefix}-tag-children`);
-
-	const titleTagRoot = el("div", { class: "chips" });
-	childSuggestRoot.after(titleTagRoot);
-	const relationEditor = createTagRelationEditor({
-		onTagAdded: (id) => {
-			const resolvedId = resolveMergedTagId(id);
-			if (!resolvedId) return;
-			const next = Array.from(new Set([...state.upload.explicitTagIds, resolvedId]));
-			setState(next);
-		},
-	});
-	titleTagRoot.after(relationEditor);
+function createTagEditorController({
+	getTitle = () => "",
+	initialExplicitIds = [],
+	watchTitleInputEl = null,
+	onExplicitTagIdsChanged = null,
+} = {}) {
+	const root = el("div", { class: "tag-editor" });
+	const chipsRoot = el("div", { class: "chips", "aria-label": "選択中のタグ" });
+	const queryEl = el("input", { class: "input", type: "text", placeholder: "1文字目から検索", autocomplete: "off" });
+	const suggestRoot = el("div", { class: "suggest" });
+	const queryWrap = el("div", { class: "tag-input" }, [queryEl, suggestRoot]);
+	const derivedNote = el("div", { class: "subnote" });
+	const childSuggestRoot = el("div", { class: "chips", "aria-label": "子タグ候補" });
+	const titleTagRoot = el("div", { class: "chips", "aria-label": "作品名由来タグ候補" });
+	let explicitTagIds = [];
 
 	const refreshTitleTag = () => {
 		renderTitleTagSuggest(titleTagRoot, {
-			getTitle: () => qs("#upload-title")?.value || "",
-			getExplicitTagIds: () => state.upload.explicitTagIds,
-			onTagAdded: (id) => setState(Array.from(new Set([...state.upload.explicitTagIds, id]))),
+			getTitle,
+			getExplicitTagIds: () => explicitTagIds,
+			onTagAdded: (id) => {
+				const resolvedId = resolveMergedTagId(id);
+				if (!resolvedId) return;
+				setExplicitTagIds(Array.from(new Set([...explicitTagIds, resolvedId])));
+			},
 		});
 	};
 
-	const setState = (explicitIds) => {
+	const relationEditor = createTagRelationEditor({
+		getRelatedTagIds: () => {
+			const derivedIds = computeDerivedParentTagIds(explicitTagIds);
+			return Array.from(new Set([...explicitTagIds, ...derivedIds]));
+		},
+		onTagAdded: (id) => {
+			const resolvedId = resolveMergedTagId(id);
+			if (!resolvedId) return;
+			setExplicitTagIds(Array.from(new Set([...explicitTagIds, resolvedId])));
+		},
+		onRelationAdded: () => {
+			// Recompute with latest tag graph after parent/child relation updates.
+			setExplicitTagIds(explicitTagIds);
+		},
+	});
+
+	root.appendChild(chipsRoot);
+	root.appendChild(queryWrap);
+	root.appendChild(derivedNote);
+	root.appendChild(childSuggestRoot);
+	root.appendChild(titleTagRoot);
+	root.appendChild(relationEditor.root);
+
+	const setExplicitTagIds = (explicitIds) => {
 		const normalizedExplicit = Array.from(
 			new Set((Array.isArray(explicitIds) ? explicitIds : []).map((id) => resolveMergedTagId(trimText(id))).filter(Boolean)),
 		);
-		state.upload.explicitTagIds = normalizedExplicit;
+		explicitTagIds = normalizedExplicit;
 		const derivedIds = computeDerivedParentTagIds(normalizedExplicit);
 		renderChips(chipsRoot, {
 			explicitIds: normalizedExplicit,
 			derivedIds,
 			onRemove: (id) => {
-				setState(normalizedExplicit.filter((x) => x !== id));
+				setExplicitTagIds(normalizedExplicit.filter((x) => x !== id));
 			},
 		});
 		derivedNote.textContent = derivedIds.length > 0 ? `自動付与（親タグ）: ${derivedIds.length}件` : "";
 		renderChildSuggest(childSuggestRoot, {
 			explicitIds: normalizedExplicit,
 			derivedIds,
-			onAdd: (id) => setState(Array.from(new Set([...normalizedExplicit, id]))),
+			onAdd: (id) => setExplicitTagIds(Array.from(new Set([...normalizedExplicit, id]))),
 		});
 		refreshTitleTag();
-		if (!state.upload.readyTouched) {
-			const readyCb = qs("#upload-ready");
-			if (readyCb) readyCb.checked = computeUploadReadyDefault();
-		}
-		saveActiveDraftFromForm();
-		renderUploadDraftList();
+		relationEditor.refreshContext();
+		onExplicitTagIdsChanged?.({
+			explicitIds: normalizedExplicit.slice(),
+			derivedIds,
+		});
 	};
 
-	const renderSuggest = (query) => {
-		const list = searchTags(query);
+	const renderSuggest = () => {
+		const q = trimText(queryEl.value);
 		suggestRoot.innerHTML = "";
-
+		if (!q) return;
+		const list = searchTags(q);
 		list.forEach((tag) => {
 			const hint = tag.status === "merged" ? "統合タグ" : tag.usage_count ? `作品数 ${tag.usage_count}` : "";
 			const item = el("div", { class: "suggest-item" }, [
@@ -2272,47 +2382,87 @@ function initTagInput(prefix) {
 			item.addEventListener("click", () => {
 				const resolved = resolveMergedTagId(tag.id);
 				if (!resolved) return;
-				const next = Array.from(new Set([...state.upload.explicitTagIds, resolved]));
-				setState(next);
+				setExplicitTagIds(Array.from(new Set([...explicitTagIds, resolved])));
 				queryEl.value = "";
 				suggestRoot.innerHTML = "";
 				queryEl.focus();
 			});
 			suggestRoot.appendChild(item);
 		});
-
-		const q = String(query || "").trim();
-		if (q && list.length < 6) {
+		if (list.length < 6) {
 			appendCreateTagSuggest(
 				suggestRoot,
 				q,
 				(id) => {
-					const next = Array.from(new Set([...state.upload.explicitTagIds, id]));
-					setState(next);
+					const resolved = resolveMergedTagId(id);
+					if (!resolved) return;
+					setExplicitTagIds(Array.from(new Set([...explicitTagIds, resolved])));
 					queryEl.value = "";
 					suggestRoot.innerHTML = "";
+					queryEl.focus();
 				},
-				{ relatedTagIds: state.upload.explicitTagIds },
+				{ relatedTagIds: explicitTagIds },
 			);
 		}
 	};
 
-	queryEl.addEventListener(
-		"input",
-		debounce(() => renderSuggest(queryEl.value), 120),
-	);
-
-	document.addEventListener("click", () => {
-		suggestRoot.innerHTML = "";
+	queryEl.addEventListener("input", debounce(renderSuggest, 120));
+	queryEl.addEventListener("blur", () => {
+		window.setTimeout(() => {
+			suggestRoot.innerHTML = "";
+		}, 120);
+	});
+	queryEl.addEventListener("focus", () => {
+		if (trimText(queryEl.value)) renderSuggest();
 	});
 
-	const titleEl = qs("#upload-title");
-	if (titleEl) titleEl.addEventListener("input", debounce(refreshTitleTag, 200));
+	const onTitleInput = debounce(refreshTitleTag, 200);
+	if (watchTitleInputEl) watchTitleInputEl.addEventListener("input", onTitleInput);
 
+	setExplicitTagIds(initialExplicitIds);
+
+	return {
+		root,
+		queryEl,
+		getExplicitTagIds: () => explicitTagIds.slice(),
+		setExplicitTagIds,
+		resetTagState: () => setExplicitTagIds([]),
+		resetRelationSelection: () => relationEditor.resetSelection(),
+		refreshRelationContext: () => relationEditor.refreshContext(),
+		refreshTitleTag,
+		destroy: () => {
+			if (watchTitleInputEl) watchTitleInputEl.removeEventListener("input", onTitleInput);
+		},
+	};
+}
+
+function initTagInput(prefix) {
+	if (prefix !== "upload") return;
+	const mount = qs("#upload-tag-editor");
+	if (!mount) return;
+	if (state.upload.tagEditor?.destroy) state.upload.tagEditor.destroy();
+	const titleInput = qs("#upload-title");
+	const controller = createTagEditorController({
+		getTitle: () => titleInput?.value || "",
+		watchTitleInputEl: titleInput,
+		initialExplicitIds: [],
+		onExplicitTagIdsChanged: ({ explicitIds }) => {
+			state.upload.explicitTagIds = explicitIds.slice();
+			if (!state.upload.readyTouched) {
+				const readyCb = qs("#upload-ready");
+				if (readyCb) readyCb.checked = computeUploadReadyDefault();
+			}
+			saveActiveDraftFromForm();
+			renderUploadDraftList();
+		},
+	});
+	state.upload.tagEditor = controller;
+	mount.innerHTML = "";
+	mount.appendChild(controller.root);
 	state.upload.setTagState = (ids = []) => {
-		queryEl.value = "";
-		suggestRoot.innerHTML = "";
-		setState(ids);
+		controller.queryEl.value = "";
+		controller.setExplicitTagIds(ids);
+		controller.resetRelationSelection();
 	};
 	state.upload.resetTagState = () => state.upload.setTagState([]);
 	state.upload.resetTagState();
@@ -2656,27 +2806,60 @@ async function loadCurationQueue() {
 	}
 }
 
-function buildViewer(work, { selectedUrls = new Set() } = {}) {
-	let current = 0;
-	const mainImg = el("img", { src: work.images?.[0]?.url || "", alt: "" });
-	const badge = el("div", { class: "badge", text: `${1}/${Math.max(1, work.images?.length || 1)}` });
+function buildViewer(
+	work,
+	{
+		selectedKeys = null,
+		selectedUrls = null,
+		images = null,
+		currentIndex = 0,
+		getImageUrl = (img) => img?.url || "",
+		getImageKey = (img) => getImageUrl(img),
+		onCurrentChange = null,
+		onSelectionChange = null,
+		onMakeCover = null,
+		makeCoverButtonText = "この画像を表紙にする",
+		clearSelectionButtonText = "選択解除",
+		thumbBadgeText = null,
+	} = {},
+) {
+	const imageList = Array.isArray(images) ? images : Array.isArray(work?.images) ? work.images : [];
+	const selection = selectedKeys instanceof Set ? selectedKeys : selectedUrls instanceof Set ? selectedUrls : new Set();
+	let current = Math.max(0, Math.min(Number(currentIndex) || 0, Math.max(0, imageList.length - 1)));
+	const mainImg = el("img", { src: getImageUrl(imageList[current]), alt: "" });
+	const badge = el("div", { class: "badge", text: `${current + 1}/${Math.max(1, imageList.length)}` });
 	const main = el("div", { class: "viewer-main" }, [mainImg, badge]);
 
 	const strip = el("div", { class: "viewer-strip" });
 	let thumbs = [];
 
+	const setCurrent = (idx) => {
+		current = Math.max(0, Math.min(Number(idx) || 0, Math.max(0, imageList.length - 1)));
+		mainImg.src = getImageUrl(imageList[current]);
+		badge.textContent = `${current + 1}/${Math.max(1, imageList.length)}`;
+		thumbs.forEach((t, i) => t.classList.toggle("is-active", i === current));
+		onCurrentChange?.(current);
+	};
+
 	const renderStrip = () => {
 		strip.innerHTML = "";
 		thumbs = [];
-		(work.images || []).forEach((img, idx) => {
+		imageList.forEach((img, idx) => {
 			const t = el("div", { class: `viewer-thumb${idx === current ? " is-active" : ""}` });
-			t.appendChild(el("img", { src: img.url, alt: "" }));
+			t.appendChild(el("img", { src: getImageUrl(img), alt: "" }));
 
+			const thumbBadge = typeof thumbBadgeText === "function" ? trimText(thumbBadgeText({ index: idx, image: img })) : "";
+			if (thumbBadge) {
+				t.appendChild(el("div", { class: "badge viewer-thumb__badge", text: thumbBadge }));
+			}
+
+			const key = getImageKey(img);
 			const checkbox = el("input", { type: "checkbox" });
-			checkbox.checked = selectedUrls.has(img.url);
+			checkbox.checked = selection.has(key);
 			checkbox.addEventListener("change", () => {
-				if (checkbox.checked) selectedUrls.add(img.url);
-				else selectedUrls.delete(img.url);
+				if (checkbox.checked) selection.add(key);
+				else selection.delete(key);
+				onSelectionChange?.(Array.from(selection));
 			});
 
 			const overlay = el("label", { class: "thumb-select" }, [checkbox]);
@@ -2689,15 +2872,8 @@ function buildViewer(work, { selectedUrls = new Set() } = {}) {
 		});
 	};
 
-	const setCurrent = (idx) => {
-		current = Math.max(0, Math.min(idx, (work.images?.length || 1) - 1));
-		mainImg.src = work.images[current]?.url || "";
-		badge.textContent = `${current + 1}/${Math.max(1, work.images?.length || 1)}`;
-		thumbs.forEach((t, i) => t.classList.toggle("is-active", i === current));
-	};
-
 	renderStrip();
-	setCurrent(0);
+	setCurrent(current);
 
 	let startX = 0;
 	mainImg.addEventListener("touchstart", (e) => {
@@ -2711,20 +2887,33 @@ function buildViewer(work, { selectedUrls = new Set() } = {}) {
 		else setCurrent(current - 1);
 	});
 
-	const makeCoverBtn = el("button", { type: "button", class: "btn", text: "この画像を表紙にする" });
+	const makeCoverBtn = el("button", { type: "button", class: "btn", text: makeCoverButtonText });
 	makeCoverBtn.addEventListener("click", () => {
-		if (!work.images || work.images.length <= 1) return;
-		const [picked] = work.images.splice(current, 1);
-		work.images.unshift(picked);
+		if (imageList.length <= 1) return;
+		if (typeof onMakeCover === "function") {
+			const result = onMakeCover({
+				currentIndex: current,
+				currentImage: imageList[current],
+				images: imageList,
+			});
+			if (result === false) return;
+			renderStrip();
+			const nextIdx = Number.isFinite(Number(result?.nextIndex)) ? Number(result.nextIndex) : current;
+			setCurrent(nextIdx);
+			return;
+		}
+		const [picked] = imageList.splice(current, 1);
+		imageList.unshift(picked);
 		showToast("表紙を変更（保存で反映）");
 		current = 0;
 		renderStrip();
 		setCurrent(0);
 	});
 
-	const clearSelectionBtn = el("button", { type: "button", class: "btn", text: "選択解除" });
+	const clearSelectionBtn = el("button", { type: "button", class: "btn", text: clearSelectionButtonText });
 	clearSelectionBtn.addEventListener("click", () => {
-		selectedUrls.clear();
+		selection.clear();
+		onSelectionChange?.([]);
 		renderStrip();
 	});
 
@@ -2734,8 +2923,10 @@ function buildViewer(work, { selectedUrls = new Set() } = {}) {
 		main,
 		strip,
 		actions,
-		getCurrentImageUrl: () => work.images?.[current]?.url || "",
-		getSelectedUrls: () => Array.from(selectedUrls),
+		getCurrentImageUrl: () => getImageUrl(imageList[current]),
+		getCurrentImageKey: () => getImageKey(imageList[current]),
+		getSelectedKeys: () => Array.from(selection),
+		getSelectedUrls: () => Array.from(selection),
 	};
 }
 
@@ -2744,8 +2935,11 @@ function renderWorkModal(work, index) {
 	modalRoot.hidden = false;
 	modalRoot.setAttribute("aria-hidden", "false");
 	modalRoot.innerHTML = "";
+	let tagEditor = null;
 
 	const close = () => {
+		if (tagEditor?.destroy) tagEditor.destroy();
+		tagEditor = null;
 		modalRoot.hidden = true;
 		modalRoot.setAttribute("aria-hidden", "true");
 		modalRoot.innerHTML = "";
@@ -2795,84 +2989,15 @@ function renderWorkModal(work, index) {
 	});
 	syncModalAuthorUi();
 
-	const tagQuery = el("input", { class: "input", type: "text", placeholder: "タグ検索", autocomplete: "off" });
-	const tagSuggest = el("div", { class: "suggest" });
-	const tagChips = el("div", { class: "chips" });
-	const derivedNote = el("div", { class: "subnote" });
-	const childSuggest = el("div", { class: "chips" });
-	const titleTagRoot = el("div", { class: "chips" });
-	const tagRelationEditor = createTagRelationEditor({
-		onTagAdded: (id) => {
-			const resolvedId = resolveMergedTagId(id);
-			if (!resolvedId) return;
-			explicitTagIds = Array.from(new Set([...explicitTagIds, resolvedId]));
-			renderTags();
+	let explicitTagIds = Array.isArray(work.tagIds) ? [...work.tagIds] : [];
+	tagEditor = createTagEditorController({
+		getTitle: () => titleInput.value || "",
+		watchTitleInputEl: titleInput,
+		initialExplicitIds: explicitTagIds,
+		onExplicitTagIdsChanged: ({ explicitIds }) => {
+			explicitTagIds = explicitIds.slice();
 		},
 	});
-	let explicitTagIds = Array.isArray(work.tagIds) ? [...work.tagIds] : [];
-
-	const refreshTitleTag = () => {
-		renderTitleTagSuggest(titleTagRoot, {
-			getTitle: () => titleInput.value || "",
-			getExplicitTagIds: () => explicitTagIds,
-			onTagAdded: (id) => {
-				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
-				renderTags();
-			},
-		});
-	};
-
-	const renderTags = () => {
-		const derived = computeDerivedParentTagIds(explicitTagIds);
-		renderChips(tagChips, {
-			explicitIds: explicitTagIds,
-			derivedIds: derived,
-			onRemove: (id) => {
-				explicitTagIds = explicitTagIds.filter((x) => x !== id);
-				renderTags();
-			},
-		});
-		derivedNote.textContent = derived.length ? `自動付与（親タグ）: ${derived.length}件` : "";
-		renderChildSuggest(childSuggest, { explicitIds: explicitTagIds, derivedIds: derived, onAdd: (id) => {
-			explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
-			renderTags();
-		}});
-		refreshTitleTag();
-	};
-	renderTags();
-
-	const renderTagSuggest = debounce(() => {
-		const q = trimText(tagQuery.value);
-		const list = searchTags(q);
-		tagSuggest.innerHTML = "";
-		list.forEach((t) => {
-			const item = el("div", { class: "suggest-item" }, [el("span", { text: t.name }), el("span", { class: "suggest-item__hint", text: t.status === "merged" ? "統合" : "" })]);
-			item.addEventListener("click", () => {
-				const id = resolveMergedTagId(t.id);
-				explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
-				tagQuery.value = "";
-				tagSuggest.innerHTML = "";
-				renderTags();
-			});
-			tagSuggest.appendChild(item);
-		});
-
-		if (q && list.length < 6) {
-			appendCreateTagSuggest(
-				tagSuggest,
-				q,
-				(id) => {
-					explicitTagIds = Array.from(new Set([...explicitTagIds, id]));
-					tagQuery.value = "";
-					tagSuggest.innerHTML = "";
-					renderTags();
-				},
-				{ relatedTagIds: explicitTagIds },
-			);
-		}
-	}, 120);
-	tagQuery.addEventListener("input", renderTagSuggest);
-	titleInput.addEventListener("input", debounce(refreshTitleTag, 200));
 
 	const viewerWrap = el("div", { class: "image-viewer" });
 
@@ -3080,7 +3205,7 @@ function renderWorkModal(work, index) {
 				]),
 			]),
 		]),
-		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagQuery, tagSuggest, tagChips, derivedNote, childSuggest, titleTagRoot, tagRelationEditor]),
+		el("div", { class: "form-row" }, [el("label", { class: "label", text: "タグ" }), tagEditor.root]),
 		el("div", { class: "form-row" }, [el("label", { class: "label", text: "キャプション" }), captionInput]),
 		el("div", { class: "form-row" }, [
 			el("label", { class: "checkbox" }, [
@@ -3232,11 +3357,10 @@ function initToolsActions() {
 	const tagEditorMount = qs("#tools-tag-relation-editor");
 	if (tagEditorMount) {
 		tagEditorMount.innerHTML = "";
-		tagEditorMount.appendChild(
-			createTagRelationEditor({
-				onTagAdded: () => {},
-			}),
-		);
+		const relationEditor = createTagRelationEditor({
+			onTagAdded: () => {},
+		});
+		tagEditorMount.appendChild(relationEditor.root);
 	}
 
 	const recalcStatusEl = qs("#tools-tags-recalc-status");

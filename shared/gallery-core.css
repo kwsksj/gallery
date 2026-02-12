@@ -374,6 +374,11 @@ body {
 	background: rgba(0, 0, 0, 0.03);
 }
 
+.chip.chip--tag-selected {
+	border-color: rgba(43, 106, 255, 0.45);
+	background: rgba(43, 106, 255, 0.08);
+}
+
 .chip button {
 	border: none;
 	background: transparent;
@@ -543,4 +548,3 @@ body {
 		border-radius: 0;
 	}
 }
-
