@@ -290,11 +290,6 @@ select.input[multiple] option {
 	background: rgba(43, 106, 255, 0.08);
 }
 
-.chip--tag-selected {
-	border-color: rgba(43, 106, 255, 0.45);
-	background: rgba(43, 106, 255, 0.08);
-}
-
 .preview {
 	position: relative;
 }
