@@ -97,9 +97,9 @@
 
 						<div class="form-row">
 							<div class="help">
-								表示中の作品の画像です。サムネをタップすると表紙（代表画像）にできます。
+								表示中の作品の画像です。大画像で確認し、サムネイル選択後に「この画像を表紙にする」で代表画像を設定できます。
 							</div>
-							<div id="upload-previews" class="preview-strip" aria-label="画像プレビュー"></div>
+							<div id="upload-previews" class="upload-viewer" aria-label="画像ビューア"></div>
 							<div class="toolbar toolbar--upload-images">
 								<div id="upload-image-selection-status" class="subnote">画像をチェックして作品を分割できます。</div>
 								<button id="upload-split-selected" class="btn" type="button">選択画像を新しい作品に分ける</button>
@@ -166,20 +166,8 @@
 						</div>
 
 						<div class="form-row">
-							<label class="label" for="upload-tag-query">タグ</label>
-							<div class="tag-input">
-								<input
-									id="upload-tag-query"
-									class="input"
-									type="text"
-									placeholder="1文字目から検索"
-									autocomplete="off"
-								/>
-								<div id="upload-tag-suggest" class="suggest"></div>
-							</div>
-							<div id="upload-tag-chips" class="chips" aria-label="タグ一覧"></div>
-							<div id="upload-tag-derived-note" class="subnote"></div>
-							<div id="upload-tag-children" class="chips" aria-label="子タグ候補"></div>
+							<div class="label">タグ</div>
+							<div id="upload-tag-editor"></div>
 						</div>
 
 						<div class="form-row">
@@ -291,6 +279,6 @@
 			<div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 		</div>
 
-		<script type="module" src="./admin/admin.js?v=20260210-1"></script>
+		<script type="module" src="./admin/admin.js?v=20260212-1"></script>
 	</body>
 </html>
