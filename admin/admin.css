@@ -356,6 +356,17 @@ select.input[multiple] option {
 	gap: 8px;
 }
 
+.tag-relation-editor__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.tag-relation-editor__header .subnote {
+	margin: 0;
+}
+
 .tag-relation-editor__grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -399,6 +410,85 @@ select.input[multiple] option {
 
 .tag-relation-editor__actions .input {
 	flex: 1 1 220px;
+}
+
+.help-toggle {
+	margin-top: 4px;
+}
+
+.split-actions > .help-toggle {
+	margin-top: 0;
+}
+
+.tag-relation-editor__header .help-toggle {
+	margin-top: 0;
+}
+
+.panel > .help-toggle,
+.form-row > .help-toggle {
+	text-align: right;
+}
+
+.panel > .help-toggle[open],
+.form-row > .help-toggle[open] {
+	text-align: left;
+}
+
+.help-toggle__summary {
+	display: inline;
+	padding: 0 2px;
+	border: none;
+	background: transparent;
+	color: rgba(47, 47, 47, 0.45);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1;
+	cursor: pointer;
+	user-select: none;
+	list-style: none;
+}
+
+.help-toggle__summary::-webkit-details-marker {
+	display: none;
+}
+
+.help-toggle__summary:hover,
+.help-toggle__summary:focus-visible {
+	color: rgba(47, 47, 47, 0.75);
+	text-decoration: underline dotted;
+	text-underline-offset: 2px;
+}
+
+.help-toggle[open] .help-toggle__summary {
+	color: var(--muted);
+}
+
+.help-toggle__body {
+	margin-top: 4px;
+}
+
+.form-grid--meta {
+	grid-template-columns: repeat(2, minmax(220px, 1fr));
+	align-items: start;
+}
+
+.form-grid--meta .form-row {
+	margin-top: 0;
+}
+
+#upload-completed-date,
+#upload-classroom {
+	min-height: 41px;
+}
+
+#upload-exif-note {
+	min-height: 1.4em;
+}
+
+@media (max-width: 760px) {
+	.form-grid--meta {
+		grid-template-columns: 1fr;
+	}
 }
 
 .image-viewer {

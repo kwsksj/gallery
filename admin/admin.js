@@ -910,9 +910,24 @@ function bindTagPickerInput({ inputEl, suggestRoot, onPick, getRelatedTagIds = (
 	};
 }
 
+function createHelpToggle(text, { summary = "?", ariaLabel = "説明を表示" } = {}) {
+	const details = el("details", { class: "help-toggle" });
+	const summaryEl = el("summary", { class: "help-toggle__summary", "aria-label": ariaLabel, text: summary });
+	details.appendChild(summaryEl);
+	details.appendChild(el("div", { class: "help-toggle__body subnote", text }));
+	return details;
+}
+
 function createTagRelationEditor({ onTagAdded, getRelatedTagIds = () => [], onRelationAdded = null } = {}) {
 	const root = el("div", { class: "tag-relation-editor" });
-	root.appendChild(el("div", { class: "subnote", text: "タグ親子設定（タグDB）" }));
+	root.appendChild(
+		el("div", { class: "tag-relation-editor__header" }, [
+			el("div", { class: "subnote", text: "タグ親子設定（タグDB）" }),
+			createHelpToggle("親/子の検索候補から新規タグを作成できます。作成後に「親子関係を追加」で反映してください。", {
+				ariaLabel: "タグ親子設定の説明を表示",
+			}),
+		]),
+	);
 
 	let parentTagId = "";
 	let childTagId = "";
@@ -1017,7 +1032,7 @@ function createTagRelationEditor({ onTagAdded, getRelatedTagIds = () => [], onRe
 		getRelatedTagIds,
 	});
 
-	const addRelationBtn = el("button", { type: "button", class: "btn", text: "既存タグに親子関係を追加" });
+	const addRelationBtn = el("button", { type: "button", class: "btn", text: "親子関係を追加" });
 	addRelationBtn.addEventListener("click", async () => {
 		addRelationBtn.disabled = true;
 		try {
@@ -1039,12 +1054,6 @@ function createTagRelationEditor({ onTagAdded, getRelatedTagIds = () => [], onRe
 		]),
 	);
 	root.appendChild(el("div", { class: "tag-relation-editor__actions" }, [addRelationBtn]));
-	root.appendChild(
-		el("div", {
-			class: "subnote",
-			text: "親/子の検索候補から新規タグを作成できます。作成後に「既存タグに親子関係を追加」で反映してください。",
-		}),
-	);
 	return {
 		root,
 		refreshContext: () => {
@@ -1288,7 +1297,11 @@ function renderAuthorCandidateButtons(root, selectEl, candidates, { emptyText = 
 		return;
 	}
 	root.hidden = false;
-	root.appendChild(el("div", { class: "subnote", text: "候補ボタン（作者名 + セッションノート）" }));
+	root.appendChild(
+		createHelpToggle("候補ボタンで作者を選択できます。表示内容は作者名 + セッションノートです。", {
+			ariaLabel: "作者候補の説明を表示",
+		}),
+	);
 
 	const selectedIds = new Set(getSelectedAuthorIds(authorSelect));
 	list.forEach((candidate) => {
@@ -1640,9 +1653,10 @@ function saveActiveDraftFromForm() {
 
 	active.coverIndex = state.upload.coverIndex;
 	active.completedDate = trimText(qs("#upload-completed-date")?.value);
-	active.groupValue = trimText(qs("#upload-group")?.value);
+	// Keep inferred/selected participant-group index for draft switching.
+	active.groupValue = trimText(active.groupValue);
 	active.classroom = normalizeClassroom(qs("#upload-classroom")?.value);
-	active.venue = trimText(qs("#upload-venue")?.value);
+	active.venue = "";
 	active.authorIds = getSelectedAuthorIds(qs("#upload-author"));
 	active.title = trimText(qs("#upload-title")?.value);
 	active.caption = trimText(qs("#upload-caption")?.value);
@@ -1656,7 +1670,6 @@ function saveActiveDraftFromForm() {
 function applyDraftToUploadForm(draft) {
 	const dateInput = qs("#upload-completed-date");
 	const classroomInput = qs("#upload-classroom");
-	const venueInput = qs("#upload-venue");
 	const titleInput = qs("#upload-title");
 	const captionInput = qs("#upload-caption");
 	const readyCb = qs("#upload-ready");
@@ -1678,7 +1691,6 @@ function applyDraftToUploadForm(draft) {
 	if (captionInput) captionInput.value = targetDraft?.caption || "";
 	if (dateInput) dateInput.value = targetDraft?.completedDate || "";
 	if (classroomInput) classroomInput.value = targetDraft?.classroom || "";
-	if (venueInput) venueInput.value = targetDraft?.venue || "";
 	if (authorSearch) authorSearch.value = "";
 	if (authorSearchResults) authorSearchResults.innerHTML = "";
 	if (status) status.textContent = "";
@@ -1939,9 +1951,9 @@ function updateUploadGroupAndAuthorCandidates({ preferredGroupValue = "", prefer
 	const dateInput = qs("#upload-completed-date");
 	const ymd = String(dateInput.value || "").trim();
 
-	const groupSelect = qs("#upload-group");
+	const classroomSelect = qs("#upload-classroom");
 	const authorSelect = qs("#upload-author");
-	if (!groupSelect || !authorSelect) return;
+	if (!authorSelect) return;
 
 	const selectedAuthorIds = Array.isArray(preferredAuthorIds)
 		? [...new Set(preferredAuthorIds.map(trimText).filter(Boolean))]
@@ -1953,55 +1965,23 @@ function updateUploadGroupAndAuthorCandidates({ preferredGroupValue = "", prefer
 	);
 
 	const groups = ymd ? getParticipantsGroups(ymd) : [];
-	populateSelect(groupSelect, {
-		placeholder: "自動/手動",
-		items: groups.map((g, idx) => ({
-			value: String(idx),
-			label: `${g.classroom || "-"} / ${g.venue || "-"}`,
-		})),
-	});
+	const preferredIndex = Number.parseInt(trimText(preferredGroupValue), 10);
+	const normalizedClassroom = normalizeClassroom(classroomSelect?.value || "");
 
-	if (groups.length > 0 && trimText(preferredGroupValue)) {
-		const targetValue = trimText(preferredGroupValue);
-		const exists = groups.some((_, idx) => String(idx) === targetValue);
-		if (exists) groupSelect.value = targetValue;
-	}
-
-	let selectedGroup = null;
+	let selectedGroupIndex = -1;
 	if (groups.length === 1) {
-		selectedGroup = groups[0];
-		groupSelect.value = "0";
+		selectedGroupIndex = 0;
+	} else if (Number.isInteger(preferredIndex) && preferredIndex >= 0 && preferredIndex < groups.length) {
+		selectedGroupIndex = preferredIndex;
+	} else if (normalizedClassroom) {
+		selectedGroupIndex = groups.findIndex((g) => normalizeClassroom(g?.classroom) === normalizedClassroom);
 	}
-	if (groups.length > 1 && groupSelect.value) selectedGroup = groups[Number(groupSelect.value)] || null;
+	if (selectedGroupIndex < 0 && groups.length > 0) selectedGroupIndex = 0;
 
-	const venueFromGroup = selectedGroup?.venue || "";
-	const classroomFromGroup = selectedGroup?.classroom || "";
-
-	const classroomSelect = qs("#upload-classroom");
-	if (classroomSelect && classroomFromGroup) classroomSelect.value = normalizeClassroom(classroomFromGroup);
-
-	const venueSelect = qs("#upload-venue");
-	const venueWarning = qs("#upload-venue-warning");
-	if (venueSelect && venueFromGroup) {
-		const options = Array.from(venueSelect.options).map((o) => o.value).filter(Boolean);
-		if (options.includes(venueFromGroup)) {
-			venueSelect.value = venueFromGroup;
-			if (venueWarning) {
-				venueWarning.hidden = true;
-				venueWarning.textContent = "";
-			}
-		} else {
-			venueSelect.value = "";
-			if (venueWarning) {
-				venueWarning.hidden = false;
-				venueWarning.textContent = `会場「${venueFromGroup}」はNotionのSelect候補に存在しないため保存しません。手動選択してください。`;
-			}
-		}
-	} else {
-		if (venueWarning) {
-			venueWarning.hidden = true;
-			venueWarning.textContent = "";
-		}
+	const selectedGroup = selectedGroupIndex >= 0 ? groups[selectedGroupIndex] || null : null;
+	const classroomFromGroup = normalizeClassroom(selectedGroup?.classroom);
+	if (classroomSelect && classroomFromGroup) {
+		classroomSelect.value = classroomFromGroup;
 	}
 
 	const participants = Array.isArray(selectedGroup?.participants) ? selectedGroup.participants : [];
@@ -2030,7 +2010,8 @@ function updateUploadGroupAndAuthorCandidates({ preferredGroupValue = "", prefer
 	state.upload.authorCandidates = candidates;
 	const active = getActiveUploadDraft();
 	if (active) {
-		active.groupValue = trimText(groupSelect.value);
+		active.groupValue = selectedGroupIndex >= 0 ? String(selectedGroupIndex) : "";
+		active.venue = "";
 		active.authorCandidates = candidates.slice();
 	}
 	syncUploadAuthorUi();
@@ -2079,12 +2060,11 @@ function resetUploadFormForNextEntry(statusText = "登録完了。次の作品�
 	if (filesInput) filesInput.focus();
 }
 
-function createUploadDraftsFromFiles(files, { completedDate = "", classroom = "", venue = "" } = {}) {
+function createUploadDraftsFromFiles(files, { completedDate = "", classroom = "" } = {}) {
 	return files.map((file) =>
 		createUploadDraft([createUploadFileEntry(file)], {
 			completedDate,
 			classroom,
-			venue,
 			ready: false,
 			readyTouched: false,
 			status: "pending",
@@ -2112,7 +2092,6 @@ function splitSelectedFilesFromActiveDraft() {
 		completedDate: active.completedDate,
 		groupValue: active.groupValue,
 		classroom: active.classroom,
-		venue: active.venue,
 		authorIds: active.authorIds,
 		title: "",
 		caption: "",
@@ -2163,13 +2142,9 @@ function mergeSelectedUploadDrafts() {
 
 function initUpload() {
 	const classroomSelect = qs("#upload-classroom");
-	const venueSelect = qs("#upload-venue");
 
 	const classroomOptions = (state.schema?.classroomOptions || []).map((v) => ({ value: v }));
 	populateSelect(classroomSelect, { placeholder: "未選択", items: classroomOptions });
-
-	const venueOptions = (state.schema?.venueOptions || []).map((v) => ({ value: v }));
-	populateSelect(venueSelect, { placeholder: "未選択", items: venueOptions });
 
 	const dateInput = qs("#upload-completed-date");
 	const fromQuery = new URLSearchParams(window.location.search).get("date");
@@ -2191,7 +2166,6 @@ function initUpload() {
 		const drafts = createUploadDraftsFromFiles(files, {
 			completedDate: initialDate,
 			classroom: normalizeClassroom(classroomSelect?.value || ""),
-			venue: trimText(venueSelect?.value),
 		});
 		state.upload.drafts = drafts;
 		state.upload.activeDraftId = drafts[0]?.id || "";
@@ -2212,17 +2186,7 @@ function initUpload() {
 		renderUploadDraftList();
 	});
 
-	const groupSelect = qs("#upload-group");
-	groupSelect.addEventListener("change", () => {
-		updateUploadGroupAndAuthorCandidates();
-		saveActiveDraftFromForm();
-	});
-
 	classroomSelect?.addEventListener("change", () => {
-		saveActiveDraftFromForm();
-		renderUploadDraftList();
-	});
-	venueSelect?.addEventListener("change", () => {
 		saveActiveDraftFromForm();
 		renderUploadDraftList();
 	});
@@ -2530,7 +2494,6 @@ async function submitSingleUploadDraft(draft, { statusEl, allowInteractiveRecove
 
 	const completedDate = trimText(draft.completedDate);
 	const classroom = normalizeClassroom(draft.classroom);
-	const venue = trimText(draft.venue);
 	const title = trimText(draft.title);
 	const caption = trimText(draft.caption);
 	const authorIds = Array.isArray(draft.authorIds) ? draft.authorIds.slice() : [];
@@ -2560,7 +2523,6 @@ async function submitSingleUploadDraft(draft, { statusEl, allowInteractiveRecove
 			title,
 			completedDate,
 			classroom,
-			venue,
 			authorIds,
 			caption,
 			tagIds,
@@ -3213,22 +3175,26 @@ function renderWorkModal(work, index) {
 				el("span", { text: "整備済として確定（公開OK）" }),
 			]),
 		]),
-		el("div", { class: "split-actions" }, [
-			el("div", { class: "help", text: "画像セット操作（分割/移動/統合）" }),
-			el("div", { class: "viewer-actions" }, [splitBtn]),
-			el("div", { class: "form-row" }, [
-				el("label", { class: "label", text: "移動" }),
+			el("div", { class: "split-actions" }, [
+				createHelpToggle("画像セットの分割・移動・統合を行えます。", {
+					ariaLabel: "画像セット操作の説明を表示",
+				}),
+				el("div", { class: "viewer-actions" }, [splitBtn]),
+				el("div", { class: "form-row" }, [
+					el("label", { class: "label", text: "移動" }),
 				moveQuery,
 				moveResults,
 				movePicked,
 				moveBtn,
-			]),
-			el("div", { class: "form-row" }, [
-				el("label", { class: "label", text: "統合（この作品に集約）" }),
-				el("div", { class: "subnote", text: "統合元は既定でアーカイブされます（★キーを温存）。" }),
-				mergeQuery,
-				mergeResults,
-				mergeSourcesRoot,
+				]),
+				el("div", { class: "form-row" }, [
+					el("label", { class: "label", text: "統合（この作品に集約）" }),
+					createHelpToggle("統合元は既定でアーカイブされます（★キーを温存）。", {
+						ariaLabel: "統合時の説明を表示",
+					}),
+					mergeQuery,
+					mergeResults,
+					mergeSourcesRoot,
 				mergeBtn,
 			]),
 		]),
