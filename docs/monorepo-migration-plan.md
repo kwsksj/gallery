@@ -6,6 +6,8 @@
 
 - 移行先（canonical）: `media-platform` (`<repo-root>`)
 - gallery 実体: `<repo-root>/apps/gallery`
+- GitHub repository: `kwsksj/media-platform`（rename 済み）
+- local workspace path: `/Users/kawasakiseiji/development/media-platform`
 - この `gallery` repo: legacy（参照用）
 
 ## What Was Decided
@@ -33,6 +35,7 @@
 - Daily Auto Post（スケジュール実行）成功
 - `admin.html` からの画像アップロード/更新 成功
 - 手動実行（workflow_dispatch）成功
+- repo rename 後の `admin.html` ギャラリー更新トリガー成功
 
 ## Operational Rule After Migration
 

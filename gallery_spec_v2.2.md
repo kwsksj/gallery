@@ -13,7 +13,7 @@ Notion（母艦）＋ Cloudflare R2（画像）をソースとして、作品ギ
 **Cloudflare R2（公開）**
 
 - `gallery.html`：ギャラリーUI本体（単一HTML、CSS/JS内包・フォント埋め込み）
-- `gallery.json`：作品データ（auto-postで自動生成してR2へ配置）
+- `gallery.json`：作品データ（`media-platform` の CLI `auto-post` で自動生成してR2へ配置）
 - `images/...`：作品画像（既存R2公開URL）
 
 **Cloudflare Workers（任意）**
@@ -226,7 +226,7 @@ Notion（母艦）＋ Cloudflare R2（画像）をソースとして、作品ギ
 
 ---
 
-## auto-post 側の追加
+## media-platform 側の追加（CLI: `auto-post`）
 
 ### 新コマンド（例）
 
