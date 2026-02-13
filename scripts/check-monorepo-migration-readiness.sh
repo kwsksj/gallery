@@ -3,7 +3,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 GALLERY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-AUTO_POST_DIR="${AUTO_POST_DIR:-$(cd "${GALLERY_DIR}/.." && pwd)/auto-post}"
+if [[ -n "${AUTO_POST_DIR:-}" ]]; then
+  AUTO_POST_DIR="${AUTO_POST_DIR}"
+else
+  CANDIDATE_MEDIA="$(cd "${GALLERY_DIR}/.." && pwd)/media-platform"
+  CANDIDATE_LEGACY="$(cd "${GALLERY_DIR}/.." && pwd)/auto-post"
+  if [[ -d "${CANDIDATE_MEDIA}/.git" ]]; then
+    AUTO_POST_DIR="${CANDIDATE_MEDIA}"
+  else
+    AUTO_POST_DIR="${CANDIDATE_LEGACY}"
+  fi
+fi
 
 echo "[1/4] Checking gallery repo path"
 if [[ ! -d "${GALLERY_DIR}/.git" ]]; then
@@ -12,10 +22,10 @@ if [[ ! -d "${GALLERY_DIR}/.git" ]]; then
 fi
 echo "OK: ${GALLERY_DIR}"
 
-echo "[2/4] Checking auto-post repo path"
+echo "[2/4] Checking canonical repo path"
 if [[ ! -d "${AUTO_POST_DIR}/.git" ]]; then
-  echo "ERROR: auto-post git repo not found at ${AUTO_POST_DIR}" >&2
-  echo "Hint: set AUTO_POST_DIR=/path/to/auto-post and rerun." >&2
+  echo "ERROR: canonical git repo not found at ${AUTO_POST_DIR}" >&2
+  echo "Hint: set AUTO_POST_DIR=/path/to/media-platform and rerun." >&2
   exit 1
 fi
 echo "OK: ${AUTO_POST_DIR}"
@@ -29,7 +39,7 @@ if [[ -n "${gallery_dirty}" && "${ALLOW_GALLERY_DIRTY:-0}" != "1" ]]; then
   exit 1
 fi
 if [[ -n "${auto_post_dirty}" ]]; then
-  echo "ERROR: auto-post repo has uncommitted changes." >&2
+  echo "ERROR: canonical repo has uncommitted changes." >&2
   exit 1
 fi
 if [[ -n "${gallery_dirty}" ]]; then
@@ -56,7 +66,7 @@ EOF
 
 if [[ "${IMPORT_MODE}" == "subtree" ]]; then
 cat <<EOF
-History-preserving import (auto-post is canonical):
+History-preserving import (canonical repo):
   git -C "${AUTO_POST_DIR}" checkout -b codex/monorepo-bootstrap
   git -C "${AUTO_POST_DIR}" remote add gallery-local "${GALLERY_DIR}"
   git -C "${AUTO_POST_DIR}" fetch gallery-local
@@ -64,7 +74,7 @@ History-preserving import (auto-post is canonical):
 EOF
 else
 cat <<EOF
-Copy import (no history, auto-post is canonical):
+Copy import (no history, canonical repo):
   git -C "${AUTO_POST_DIR}" checkout -b codex/monorepo-bootstrap
   mkdir -p "${AUTO_POST_DIR}/apps/gallery"
   rsync -a --exclude .git "${GALLERY_DIR}/" "${AUTO_POST_DIR}/apps/gallery/"

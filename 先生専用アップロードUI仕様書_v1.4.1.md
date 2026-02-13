@@ -483,7 +483,7 @@ async function handleTriggerGalleryUpdate(request, env) {
 |--------|------|
 | `ADMIN_API_KEY` | （任意）管理APIを二重化する場合の認証キー。**フロントには埋め込まない** |
 | `GITHUB_TOKEN` | GitHub Personal Access Token（`workflow` スコープ） |
-| `GITHUB_REPO` | リポジトリ名（例：`username/auto-post`） |
+| `GITHUB_REPO` | リポジトリ名（例：`username/media-platform`） |
 
 ---
 

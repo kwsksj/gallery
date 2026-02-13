@@ -56,7 +56,7 @@ TAGS_INDEX_KEY = "tags_index.json"
 #   npx wrangler secret put ADMIN_API_TOKEN
 
 # GitHub Actions（ギャラリー更新トリガー用）
-GITHUB_REPO = "kwsksj/auto-post"
+GITHUB_REPO = "kwsksj/media-platform"
 GITHUB_WORKFLOW_FILE = "gallery-export.yml"
 GITHUB_TAGS_WORKFLOW_FILE = ""
 GITHUB_REF = "main"

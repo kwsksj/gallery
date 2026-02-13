@@ -3,9 +3,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CANONICAL_REPO_DIR="$(cd "$REPO_ROOT/.." && pwd)/media-platform"
+LEGACY_REPO_DIR="$(cd "$REPO_ROOT/.." && pwd)/auto-post"
+
+DEFAULT_ENV_FILE="$CANONICAL_REPO_DIR/.env"
+if [[ ! -f "$DEFAULT_ENV_FILE" ]]; then
+  DEFAULT_ENV_FILE="$LEGACY_REPO_DIR/.env"
+fi
 
 BUCKET="${1:-woodcarving-photos}"
-ENV_FILE="${2:-/Users/kawasakiseiji/development/auto-post/.env}"
+ENV_FILE="${2:-$DEFAULT_ENV_FILE}"
 OUT_DIR="${3:-$(mktemp -d)}"
 
 cleanup() {
@@ -37,4 +44,3 @@ npx wrangler r2 object put "${BUCKET}/tags_index.json" \
 echo "Done. Uploaded:"
 echo "  - students_index.json"
 echo "  - tags_index.json"
-
