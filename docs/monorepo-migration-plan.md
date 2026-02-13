@@ -5,7 +5,10 @@
 ## Current Status
 
 - 移行先（canonical）: `media-platform` (`<repo-root>`)
-- gallery 実体: `<repo-root>/apps/gallery`
+- gallery 実体:
+  - `<repo-root>/apps/gallery-web`
+  - `<repo-root>/apps/admin-web`
+  - `<repo-root>/apps/worker-api`
 - GitHub repository: `kwsksj/media-platform`（rename 済み）
 - local workspace path: `/Users/kawasakiseiji/development/media-platform`
 - この `gallery` repo: legacy（参照用）
@@ -22,9 +25,10 @@
 
 以下の流れで統合を実施:
 
-1. `gallery` を `media-platform/apps/gallery` に取り込み
-2. ルートコマンド/ドキュメントを canonical 側で整理
-3. 運用確認（CLI dry-run / Worker deploy / scheduled runs / 手動実行 / admin upload）
+1. `gallery` を canonical repo に取り込み（当初: `apps/gallery`）
+2. 責務分離として `apps/gallery-web` / `apps/admin-web` / `apps/worker-api` に再編
+3. ルートコマンド/ドキュメントを canonical 側で整理
+4. 運用確認（CLI dry-run / Worker deploy / scheduled runs / 手動実行 / admin upload）
 
 ## Validation Notes
 
@@ -46,5 +50,7 @@
 ## Where To Read Current Docs
 
 - `<repo-root>/README.md`
-- `<repo-root>/MONOREPO_INTEGRATION.md`
-- `<repo-root>/apps/gallery/README.md`
+- `<repo-root>/docs/monorepo-integration.md`
+- `<repo-root>/apps/gallery-web/README.md`
+- `<repo-root>/apps/admin-web/README.md`
+- `<repo-root>/apps/worker-api/README.md`

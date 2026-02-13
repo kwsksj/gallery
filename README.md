@@ -5,8 +5,11 @@
 ## 現在の運用先
 
 - 開発・運用の正本: `media-platform` (`<repo-root>`)
-- gallery 実体: `<repo-root>/apps/gallery`
-- 統合メモ: `<repo-root>/MONOREPO_INTEGRATION.md`
+- gallery 実体:
+  - `<repo-root>/apps/gallery-web`
+  - `<repo-root>/apps/admin-web`
+  - `<repo-root>/apps/worker-api`
+- 統合メモ: `<repo-root>/docs/monorepo-integration.md`
 
 ## このリポジトリの扱い
 
@@ -19,7 +22,10 @@
 - 構成方針（本リポジトリ側の要約）: `ARCHITECTURE.md`
 - 移行実績（本リポジトリ側の記録）: `docs/monorepo-migration-plan.md`
 - 現行運用手順（正本）: `<repo-root>/README.md`
-- gallery 詳細（正本）: `<repo-root>/apps/gallery/README.md`
+- gallery 詳細（正本）:
+  - `<repo-root>/apps/gallery-web/README.md`
+  - `<repo-root>/apps/admin-web/README.md`
+  - `<repo-root>/apps/worker-api/README.md`
 
 ## 補足
 
