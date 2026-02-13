@@ -2,6 +2,20 @@
 
 Notion + Cloudflare R2 をソースにしたギャラリーを、Googleサイトへ iframe で埋め込むための一式です。
 
+## Repository Scope
+
+このリポジトリは現在、以下を担当します。
+
+- 公開ギャラリーUI
+- 先生専用アップロード/整備UI
+- Cloudflare Worker API
+
+`auto-post`（SNS投稿 / Takeout取り込み / gallery.json 生成）との統合を前提に、責務境界と移行計画を用意しています。
+
+- アーキテクチャ: `ARCHITECTURE.md`
+- モノレポ移行計画: `docs/monorepo-migration-plan.md`
+- 移行前チェック: `scripts/check-monorepo-migration-readiness.sh`
+
 ## 主要ファイル
 
 - `gallery.html`: ギャラリーUI（単一HTML）
