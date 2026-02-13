@@ -1,48 +1,28 @@
 # Architecture Overview
 
-## Goal
+## Current Architecture (as of 2026-02-13)
 
-This document clarifies repository boundaries and the target monorepo structure.
+モノレポ統合後の正本は `auto-post` です。
 
-Current pain point: related features are split across `gallery` and `auto-post`, which makes ownership and change impact harder to reason about.
+- canonical repository: `/Users/kawasakiseiji/development/auto-post`
+- gallery module: `/Users/kawasakiseiji/development/auto-post/apps/gallery`
 
-## Current State (as of 2026-02-13)
-
-- `gallery` repo
-  - Public gallery UI (`gallery.html`)
-  - Admin upload/curation UI (`admin.html`, `admin/`)
-  - Worker API for admin and stars (`worker/`, `wrangler.toml`)
-- `auto-post` repo
-  - Notion-driven social posting (Instagram/X/Threads)
-  - Google Takeout grouping/import
-  - `gallery.json` and thumbs export pipeline
-
-## Recommended Direction
-
-Use a single repository with directory-level boundaries.
-
-Given current operations (GitHub Actions + secrets already on `auto-post`), use `auto-post` as canonical and import `gallery` under `apps/gallery` first.
-
-Example target layout:
-
-```text
-/apps/gallery
-/shared
-/docs
-```
+この `gallery` リポジトリは、履歴参照・比較用の legacy repo として扱います。
 
 ## Responsibility Boundaries
 
-- `apps/gallery`
-  - public gallery UI, admin UI, worker API (imported as a module first)
-- canonical root (`auto-post`)
-  - batch/automation tooling: ingest, publish, export
-  - scheduled workflows and repository secrets
-- `shared`
-  - Shared assets/utilities across web apps
+- `auto-post` root
+  - Notion 駆動の投稿自動化
+  - Google Takeout 取り込み
+  - `gallery.json` / `thumbs` のエクスポート
+  - GitHub Actions スケジュールと Secrets 運用
+- `auto-post/apps/gallery`
+  - `gallery.html`（公開UI）
+  - `admin.html` / `admin/`（管理UI）
+  - `worker/` + `wrangler.toml`（API と管理系エンドポイント）
 
-## Migration Principle
+## Operation Rule
 
-- Keep runtime behavior unchanged first.
-- Import `gallery` into canonical repo before internal rearrangement.
-- Move paths in small batches with compatibility shims as needed.
+- 日常の改修先は `auto-post` のみ
+- この repo への新規改修は原則停止
+- 例外は緊急時の切り戻し検証や履歴調査のみ
